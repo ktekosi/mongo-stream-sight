@@ -1,4 +1,5 @@
 import { ObjectId, type Collection, type Document, type WithId } from 'mongodb';
+import { applyUpdatesToDocument, getValueByPath, insertOrdered } from './utils';
 
 export interface CacheOptions {
     query?: Document
@@ -42,36 +43,6 @@ function isDeleteEvent(event: Document): event is DeleteEvent {
 
 type RecordIndex = Record<string, WithId<Document>>;
 
-function insertOrdered<T>(arr: T[], item: T, compare: (a: T, b: T) => number): T[] {
-    const index = arr.findIndex((element) => compare(item, element) <= 0);
-
-    // If no suitable index is found, append the item to the end
-    if (index === -1) {
-        arr.push(item);
-    } else {
-        arr.splice(index, 0, item);
-    }
-
-    return arr;
-}
-
-type AnyObject = Record<string, any>;
-
-function getValueByPath(obj: AnyObject, path: string): any {
-    const keys = path.split('.');
-    let current = obj;
-
-    for (const key of keys) {
-        if (current !== undefined && typeof current === 'object' && key in current) {
-            current = current[key];
-        } else {
-            return undefined;
-        }
-    }
-
-    return current;
-}
-
 export class LiveCache {
     private cache: Document[];
     private index: RecordIndex;
@@ -100,37 +71,80 @@ export class LiveCache {
         });
     }
 
+    private insertIntoCache(doc: Document, sortOption?: Record<string, number>): void {
+        if (sortOption === undefined) {
+            this.cache.push(doc);
+            return;
+        }
+
+        const sortField: string | undefined = Object.keys(sortOption)[0];
+
+        if (sortField === undefined) {
+            this.cache.push(doc);
+            return;
+        }
+
+        const sortDirection: number = sortOption[sortField];
+        insertOrdered(this.cache, doc, (a: Document, b: Document): number => {
+            const valueA = getValueByPath(a, sortField);
+            const valueB = getValueByPath(b, sortField);
+
+            return valueA < valueB ? sortDirection : (valueA > valueB ? -sortDirection : 0);
+        });
+    }
+
+    private removeFromCache(id: string): void {
+        const index = this.cache.findIndex(doc => doc._id.toHexString() === id);
+
+        if (!isNaN(index)) {
+            this.cache.splice(index, 1);
+        }
+    }
+
     private insertDocument(insertEvent: InsertEvent): void {
-        if (this.options?.query === undefined || this.documentMatchesQuery(insertEvent.fullDocument, this.options?.query)) {
-            if (this.options?.sort !== undefined) {
-                this.cache.push(insertEvent.fullDocument);
-            } else {
-                const sortOption: Record<string, number> = this.options?.sort ?? {};
-                const sortField: string | undefined = Object.keys(sortOption)[0];
+        const query = this.options?.query;
+        const doc = insertEvent.fullDocument;
 
-                if (sortField !== undefined) {
-                    const sortDirection: number = sortOption[sortField];
-                    insertOrdered(this.cache, insertEvent.fullDocument, (a: Document, b: Document): number => {
-                        const valueA = getValueByPath(a, sortField);
-                        const valueB = getValueByPath(b, sortField);
-
-                        return valueA < valueB ? sortDirection : (valueA > valueB ? -sortDirection : 0);
-                    });
-                } else {
-                    this.cache.push(insertEvent.fullDocument);
-                }
-            }
-
-            this.index[insertEvent.documentKey._id.toHexString()] = insertEvent.fullDocument;
+        if (query === undefined || this.documentMatchesQuery(doc, query)) {
+            this.insertIntoCache(doc, this.options?.sort);
+            this.index[insertEvent.documentKey._id.toHexString()] = doc;
         }
     }
 
     private updateDocument(updateEvent: UpdateEvent): void {
+        const id = updateEvent.documentKey._id.toHexString();
+        const sort = this.options?.sort;
 
+        if (this.index[id] === undefined) {
+            return;
+        }
+
+        const doc: Document = this.index[id];
+
+        applyUpdatesToDocument(doc, updateEvent.updateDescription);
+
+        const query = this.options?.query;
+
+        if (query === undefined || this.documentMatchesQuery(doc, query)) {
+            if (sortFieldChanged(sort, updateEvent.updateDescription)) {
+                this.removeFromCache(id);
+                this.insertIntoCache(doc, sort);
+            }
+        } else {
+            this.removeFromCache(id);
+            delete this.index[id];
+        }
     }
 
     private deleteDocument(deleteEvent: DeleteEvent): void {
+        const id = deleteEvent.documentKey._id.toHexString();
 
+        if (this.index[id] === undefined) {
+            return;
+        }
+
+        this.removeFromCache(id);
+        delete this.index[id];
     }
 
     private async onChangeEvent(changeEvent: Document): Promise<void> {
@@ -147,10 +161,6 @@ export class LiveCache {
         if (isDeleteEvent(changeEvent)) {
             this.deleteDocument(changeEvent);
         }
-    }
-
-    private sortCache(): void {
-
     }
 
     private documentMatchesQuery(doc: Document, query: Document): boolean {
