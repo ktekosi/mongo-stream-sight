@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  mongo1:
+    image: mongo:6
+    container_name: mongo1
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=root
+      - MONGO_INITDB_ROOT_PASSWORD=password
+    command: --config /etc/mongo/mongod.conf
+    networks:
+      - mongo-cluster
+    volumes:
+      - mongo1_data:/data/db
+      - mongodb_keyfile:/etc/mongo/key/
+      - ./setup/mongod.conf:/etc/mongo/mongod.conf
+    ports:
+      - "27017"
+  mongo2:
+    image: mongo:6
+    container_name: mongo2
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=root
+      - MONGO_INITDB_ROOT_PASSWORD=password
+    command: --config /etc/mongo/mongod.conf
+    networks:
+      - mongo-cluster
+    volumes:
+      - mongo2_data:/data/db
+      - mongodb_keyfile:/etc/mongo/key/
+      - ./setup/mongod.conf:/etc/mongo/mongod.conf
+    ports:
+      - "27017"
+  mongo3:
+    image: mongo:6
+    container_name: mongo3
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=root
+      - MONGO_INITDB_ROOT_PASSWORD=password
+    command: --config /etc/mongo/mongod.conf
+    networks:
+      - mongo-cluster
+    volumes:
+      - mongo3_data:/data/db
+      - mongodb_keyfile:/etc/mongo/key/
+      - ./setup/mongod.conf:/etc/mongo/mongod.conf
+    ports:
+      - "27017"
+  
+networks:
+  mongo-cluster:
+    driver: bridge
+
+volumes:
+  mongo1_data:
+  mongo2_data:
+  mongo3_data:
+  mongodb_keyfile:
