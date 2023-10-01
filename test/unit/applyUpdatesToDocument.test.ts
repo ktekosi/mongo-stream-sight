@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { applyUpdatesToDocument } from '../../src/utils.ts';
+import { applyUpdatesToDocument } from '../../src/cache.ts';
 import { type UpdateDescription } from 'mongodb';
 
 describe('applyUpdatesToDocument', () => {

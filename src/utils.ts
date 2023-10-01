@@ -66,17 +66,3 @@ export function deletePath(obj: any, path: string): void {
 
     delete current[keys[keys.length - 1]];
 }
-
-export function applyUpdatesToDocument(doc: Document, updates: UpdateDescription): void {
-    if (updates.updatedFields !== undefined) {
-        for (const [key, value] of Object.entries(updates.updatedFields)) {
-            setValueByPath(doc, key, value);
-        }
-    }
-
-    if (updates.removedFields !== undefined) {
-        for (const key of updates.removedFields) {
-            deletePath(doc, key);
-        }
-    }
-}
