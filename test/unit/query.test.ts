@@ -248,7 +248,7 @@ describe('documentMatchesQuery', () => {
         });
     });
 
-    describe('$text opeartor', () => {
+    describe('$text operator', () => {
         test('$text should match with case sensitivity', () => {
             const doc = { description: 'The quick brown fox jumps over the lazy dog' };
             const query = { description: { $text: { $search: 'quick brown', $caseSensitive: true } } };
@@ -696,6 +696,78 @@ describe('documentMatchesQuery', () => {
                 }
             };
             expect(documentMatchesQuery(doc, query)).toBe(true);
+        });
+
+        test('$expr with $and should return true only when all expressions evaluate to true', () => {
+            const doc = { a: 5, b: 10 };
+
+            const query = {
+                $expr: {
+                    $and: [{ $eq: ['$a', 5] }, { $eq: ['$b', 10] }]
+                }
+            };
+            expect(documentMatchesQuery(doc, query)).toBe(true);
+
+            const queryFalse = {
+                $expr: {
+                    $and: [{ $eq: ['$a', 5] }, { $eq: ['$b', 5] }]
+                }
+            };
+            expect(documentMatchesQuery(doc, queryFalse)).toBe(false);
+        });
+
+        test('$expr with $or should return true when any of its expressions evaluate to true', () => {
+            const doc = { a: 5, b: 10 };
+
+            const query = {
+                $expr: {
+                    $or: [{ $eq: ['$a', 5] }, { $eq: ['$b', 15] }]
+                }
+            };
+            expect(documentMatchesQuery(doc, query)).toBe(true);
+
+            const queryFalse = {
+                $expr: {
+                    $or: [{ $eq: ['$a', 6] }, { $eq: ['$b', 15] }]
+                }
+            };
+            expect(documentMatchesQuery(doc, queryFalse)).toBe(false);
+        });
+
+        test('$expr with $not should negate the result of its expression', () => {
+            const doc = { a: 5 };
+
+            const query = {
+                $expr: {
+                    $not: [{ $eq: ['$a', 6] }]
+                }
+            };
+            expect(documentMatchesQuery(doc, query)).toBe(true);
+
+            const queryFalse = {
+                $expr: {
+                    $not: [{ $eq: ['$a', 5] }]
+                }
+            };
+            expect(documentMatchesQuery(doc, queryFalse)).toBe(false);
+        });
+
+        test('$expr with $nor should return true if none of its expressions evaluate to true', () => {
+            const doc = { a: 5, b: 10 };
+
+            const query = {
+                $expr: {
+                    $nor: [{ $eq: ['$a', 6] }, { $eq: ['$b', 15] }]
+                }
+            };
+            expect(documentMatchesQuery(doc, query)).toBe(true);
+
+            const queryFalse = {
+                $expr: {
+                    $nor: [{ $eq: ['$a', 5] }, { $eq: ['$b', 15] }]
+                }
+            };
+            expect(documentMatchesQuery(doc, queryFalse)).toBe(false);
         });
     });
 

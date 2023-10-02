@@ -1,4 +1,4 @@
-import { ObjectId, type Collection, type Document, type WithId, type UpdateDescription } from 'mongodb';
+import { type Collection, type Document, type WithId, type UpdateDescription } from 'mongodb';
 import { deletePath, getValueByPath, insertOrdered, setValueByPath } from './utils';
 import { documentMatchesQuery } from './query';
 
@@ -182,16 +182,8 @@ export class LiveCache {
     private async watch(): Promise<void> {
         const changeStream = this.collection.watch();
         changeStream.on('change', (changeEvent: Document) => {
-            void this.onChangeEvent(changeEvent);
+            this.onChangeEvent(changeEvent);
         });
-    }
-
-    private insertIntoCache(doc: Document, sortOption?: Record<string, number>): void {
-        insertIntoCache(this.cache, doc, sortOption);
-    }
-
-    private removeFromCache(id: string): void {
-        removeFromCache(this.cache, id);
     }
 
     private insertDocument(insertEvent: InsertEvent): void {
@@ -206,7 +198,7 @@ export class LiveCache {
         deleteDocument(deleteEvent, this.cache, this.index);
     }
 
-    private async onChangeEvent(changeEvent: Document): Promise<void> {
+    private onChangeEvent(changeEvent: Document): void {
         if (isInsertEvent(changeEvent)) {
             this.insertDocument(changeEvent);
             return;

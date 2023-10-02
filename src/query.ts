@@ -199,23 +199,72 @@ function handleBitwise(docValue: number, queryValue: number, operator: string): 
     }
 }
 
-function handleArithmetic(operator: string, value1: any, value2: any): any {
+function handleArithmetic(operator: string, value1: any, ...values: any[]): any {
     switch (operator) {
+        case '$abs':
+            return Math.abs(value1);
         case '$add':
-            return value1 + value2;
-        case '$subtract':
-            return value1 - value2;
-        case '$multiply':
-            return value1 * value2;
+            if (values.some(v => v instanceof Date) && values.length === 1) {
+                return new Date(value1.getTime() + values[0]);
+            }
+            return [value1, ...values].reduce((acc, val) => acc + val, 0);
+        case '$ceil':
+            return Math.ceil(value1);
         case '$divide':
-            if (value2 === 0) return false; // Avoid division by zero
-            return value1 / value2;
+            if (values[0] === 0) return false;
+            return value1 / values[0];
+        case '$exp':
+            return Math.exp(value1);
+        case '$floor':
+            return Math.floor(value1);
+        case '$ln':
+            return Math.log(value1);
+        case '$log':
+            if (values[0] === 0) return false;
+            return Math.log(value1) / Math.log(values[0]);
+        case '$log10':
+            return Math.log10(value1);
+        case '$mod':
+            if (values[0] === 0) return false;
+            return value1 % values[0];
+        case '$multiply':
+            return [value1, ...values].reduce((acc, val) => acc * val, 1);
+        case '$pow':
+            return Math.pow(value1, values[0]);
+        case '$round':
+            return Math.round(value1);
+        case '$sqrt':
+            return Math.sqrt(value1);
+        case '$subtract':
+            if (value1 instanceof Date && typeof values[0] === 'number') {
+                return new Date(value1.getTime() - values[0]);
+            } else if (value1 instanceof Date && values[0] instanceof Date) {
+                return value1.getTime() - values[0].getTime();
+            } else {
+                return value1 - values[0];
+            }
+        case '$trunc':
+            if (typeof values[0] === 'undefined') {
+                return Math.trunc(value1);
+            } else {
+                const factor = Math.pow(10, values[0]);
+                return Math.trunc(value1 * factor) / factor;
+            }
         default:
             return false;
     }
 }
 
-function handleExpr(doc: Document, expr: any): boolean {
+function handleCmpOperator(value1: any, value2: any): number {
+    if (value1 instanceof Date && value2 instanceof Date) {
+        return value1.getTime() === value2.getTime() ? 0 : value1.getTime() > value2.getTime() ? 1 : -1;
+    }
+    if (value1 > value2) return 1;
+    if (value1 < value2) return -1;
+    return 0;
+}
+
+function handleExpr(doc: Document, expr: any): any {
     if (expr === undefined || expr === null) return false;
 
     const operator = Object.keys(expr)[0];
@@ -235,6 +284,10 @@ function handleExpr(doc: Document, expr: any): boolean {
     const value1 = evaluateExpression(values[0]);
     const value2 = evaluateExpression(values[1]);
 
+    const evaluateLogicalExpressions = (expressions: any[]): boolean[] => {
+        return expressions.map(expression => handleExpr(doc, expression));
+    };
+
     switch (operator) {
         case '$eq':
         case '$gt':
@@ -243,11 +296,34 @@ function handleExpr(doc: Document, expr: any): boolean {
         case '$lte':
         case '$ne':
             return handleComparison(value1, value2, operator);
+        case '$cmp':
+            return handleCmpOperator(value1, value2);
         case '$add':
         case '$subtract':
         case '$multiply':
         case '$divide':
+        case '$mod':
+        case '$abs':
+        case '$ceil':
+        case '$exp':
+        case '$floor':
+        case '$ln':
+        case '$log':
+        case '$log10':
+        case '$pow':
+        case '$round':
+        case '$sqrt':
+        case '$trunc':
             return handleArithmetic(operator, value1, value2);
+        // Logical Operators
+        case '$and':
+            return evaluateLogicalExpressions(values).every(Boolean);
+        case '$or':
+            return evaluateLogicalExpressions(values).some(Boolean);
+        case '$not':
+            return !evaluateLogicalExpressions(values)[0];
+        case '$nor':
+            return !evaluateLogicalExpressions(values).some(Boolean);
         case '$cond':
         {
             let condition, trueCase, falseCase;
@@ -297,7 +373,7 @@ export function documentMatchesQuery(doc: Document, query: Document): boolean {
         } else if (['$and', '$or', '$nor'].includes(field)) {
             if (!handleLogical(doc, queryValue, field)) return false;
         } else if (field === '$expr') {
-            if (!handleExpr(doc, queryValue)) return false;
+            if (handleExpr(doc, queryValue) === false) return false;
         } else if (typeof queryValue === 'object' && queryValue !== null) {
             const operator = Object.keys(queryValue)[0];
 
@@ -309,8 +385,6 @@ export function documentMatchesQuery(doc: Document, query: Document): boolean {
                 if (!handleElement(docValue, queryValue[operator], operator)) return false;
             } else if (['$all', '$elemMatch', '$size'].includes(operator)) {
                 if (!handleArray(docValue, queryValue[operator], operator)) return false;
-            } else if (operator === '$expr') {
-                if (!handleExpr(doc, queryValue[operator])) return false;
             } else if (operator === '$where') {
                 if (!handleWhere(doc, queryValue[operator])) return false;
             } else if (['$mod', '$regex', '$text'].includes(operator)) {
