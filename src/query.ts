@@ -72,15 +72,51 @@ function handleLogical(doc: Document, queryValue: any, operator: string): boolea
     }
 }
 
+function matchesBsonType(docValue: any, queryValue: any): boolean {
+    // Helper function to get BSON type as string
+    function getBsonType(value: any): string | null {
+        if (value instanceof Date) return 'date';
+        if (typeof value === 'string') return 'string';
+        if (typeof value === 'boolean') return 'bool';
+        if (typeof value === 'number') {
+            if (Number.isInteger(value)) return 'int';
+            return 'double';
+        }
+        if (Array.isArray(value)) return 'array';
+        if (value instanceof RegExp) return 'regex';
+        if (value !== undefined && value._bsontype === 'ObjectId') return 'objectId'; // Assuming you're using the MongoDB driver for Node.js
+        if (value instanceof Buffer) return 'binData';
+        if (value !== undefined && typeof value === 'object') return 'object';
+        return null;
+    }
+
+    const mapping: Record<number, string> = {
+        1: 'double',
+        2: 'string',
+        3: 'object',
+        4: 'array',
+        5: 'binData',
+        7: 'objectId',
+        8: 'bool',
+        9: 'date',
+        11: 'regex',
+        16: 'int',
+        18: 'long' // Note: JavaScript doesn't have a separate 'long' type, but this is for completeness
+    };
+
+    const docValueType = getBsonType(docValue);
+    const expectedType = typeof queryValue === 'number' ? mapping[queryValue] : queryValue;
+
+    return docValueType === expectedType;
+}
+
 // Element Operators
 function handleElement(docValue: any, queryValue: any, operator: string): boolean {
     switch (operator) {
         case '$exists':
             return (docValue !== undefined) === queryValue;
         case '$type':
-            // This is a simplified type check. MongoDB's $type supports more types.
-            // eslint-disable-next-line valid-typeof
-            return typeof docValue === (queryValue as string);
+            return matchesBsonType(docValue, queryValue);
         default:
             return false;
     }
@@ -114,7 +150,7 @@ function matchesMultipleWordsInAnyOrder(target: string, searchString: string): b
 function handleEvaluation(docValue: any, queryValue: any, operator: string): boolean {
     switch (operator) {
         case '$mod':
-            return docValue % queryValue[operator][0] === queryValue[operator][1];
+            return queryValue[operator][0] === 0 ? false : (Math.abs(docValue % queryValue[operator][0]) === queryValue[operator][1]);
         case '$regex':
         {
             let regex: RegExp;
@@ -163,15 +199,41 @@ function handleBitwise(docValue: number, queryValue: number, operator: string): 
     }
 }
 
+function handleArithmetic(operator: string, value1: any, value2: any): any {
+    switch (operator) {
+        case '$add':
+            return value1 + value2;
+        case '$subtract':
+            return value1 - value2;
+        case '$multiply':
+            return value1 * value2;
+        case '$divide':
+            if (value2 === 0) return false; // Avoid division by zero
+            return value1 / value2;
+        default:
+            return false;
+    }
+}
+
 function handleExpr(doc: Document, expr: any): boolean {
     if (expr === undefined || expr === null) return false;
 
     const operator = Object.keys(expr)[0];
     const values = expr[operator];
 
-    // Get the actual values from the document using getValueByPath
-    const value1 = getValueByPath(doc, values[0]);
-    const value2 = getValueByPath(doc, values[1]);
+    // Evaluate the expressions
+    const evaluateExpression = (expression: any): any => {
+        if (typeof expression === 'string' && expression.startsWith('$')) {
+            return getValueByPath(doc, expression.slice(1)); // Remove the $ and get the value
+        }
+        if (typeof expression === 'object') {
+            return handleExpr(doc, expression);
+        }
+        return expression;
+    };
+
+    const value1 = evaluateExpression(values[0]);
+    const value2 = evaluateExpression(values[1]);
 
     switch (operator) {
         case '$eq':
@@ -181,6 +243,11 @@ function handleExpr(doc: Document, expr: any): boolean {
         case '$lte':
         case '$ne':
             return handleComparison(value1, value2, operator);
+        case '$add':
+        case '$subtract':
+        case '$multiply':
+        case '$divide':
+            return handleArithmetic(operator, value1, value2);
         case '$cond':
         {
             let condition, trueCase, falseCase;
@@ -194,7 +261,8 @@ function handleExpr(doc: Document, expr: any): boolean {
                 falseCase = expr[operator].else;
             }
 
-            return handleExpr(doc, condition) ? getValueByPath(doc, trueCase) : getValueByPath(doc, falseCase);
+            // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions
+            return evaluateExpression(condition) ? evaluateExpression(trueCase) : evaluateExpression(falseCase);
         }
         default:
             return false;
@@ -228,6 +296,8 @@ export function documentMatchesQuery(doc: Document, query: Document): boolean {
             if (!queryValue.test(docValue)) return false;
         } else if (['$and', '$or', '$nor'].includes(field)) {
             if (!handleLogical(doc, queryValue, field)) return false;
+        } else if (field === '$expr') {
+            if (!handleExpr(doc, queryValue)) return false;
         } else if (typeof queryValue === 'object' && queryValue !== null) {
             const operator = Object.keys(queryValue)[0];
 
