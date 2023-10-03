@@ -4,6 +4,7 @@ services:
   mongo1:
     image: mongo:6
     container_name: mongo1
+    hostname: mongo1
     environment:
       - MONGO_INITDB_ROOT_USERNAME=root
       - MONGO_INITDB_ROOT_PASSWORD=password
@@ -19,6 +20,7 @@ services:
   mongo2:
     image: mongo:6
     container_name: mongo2
+    hostname: mongo2
     environment:
       - MONGO_INITDB_ROOT_USERNAME=root
       - MONGO_INITDB_ROOT_PASSWORD=password
@@ -34,6 +36,7 @@ services:
   mongo3:
     image: mongo:6
     container_name: mongo3
+    hostname: mongo3
     environment:
       - MONGO_INITDB_ROOT_USERNAME=root
       - MONGO_INITDB_ROOT_PASSWORD=password
