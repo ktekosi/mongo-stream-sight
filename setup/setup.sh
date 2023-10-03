@@ -12,5 +12,10 @@ docker run --rm -v "$project_name"_mongodb_keyfile:/etc/mongo/key mongo:6 bash -
 # Start the mongo containers
 docker-compose up -d
 
+echo "Waiting 5s for cluster to come up..."
+sleep 5
+
+echo "Done. Trying to init replica set"
+
 # Run the init replica
 docker run -it --network ${project_name}_mongo-cluster -v ./init-replica.js:/data/init-replica.js mongo:6 mongosh mongodb://root:password@mongo1/admin /data/init-replica.js

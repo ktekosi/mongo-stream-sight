@@ -1,13 +1,15 @@
 {
   "scripts": {
     "lint": "bun run eslint:run",
-    "eslint:run": "bun x eslint . --ext .ts"
+    "eslint:run": "bun x eslint . --ext .ts",
+    "mongo" : "docker run -it --network $(basename $(pwd))_mongo-cluster mongo:6 mongosh mongodb://root:password@mongo1/admin?replicaSet=rs0"
   },
   "dependencies": {
     "@types/yargs": "^17.0.26",
     "@typescript-eslint/parser": "^6.7.3",
     "mongodb": "^6.0.0",
-    "yargs": "^17.7.2"
+    "yargs": "^17.7.2",
+    "zod": "^3.22.2"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^6.7.3",

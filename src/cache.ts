@@ -158,14 +158,20 @@ export function deleteDocument(deleteEvent: DeleteEvent, cache: Document[], inde
     delete index[id];
 }
 
+type Resolver<T> = (value?: T | PromiseLike<T>) => void;
+type Rejecter = (reason?: any) => void;
+
 export class LiveCache {
-    private cache: Document[];
-    private readonly index: RecordIndex;
+    private readonly cache: Document[] = [];
+    private readonly index: RecordIndex = {};
+    private ready: boolean = false;
+    private readonly changeEventsBuffer: Document[] = [];
+    private readonly readyPromise: Promise<void>;
 
     constructor(private readonly collection: Collection, private readonly options?: CacheOptions) {
-        this.cache = [];
-        this.index = {};
-        void this.runQuery();
+        this.readyPromise = new Promise((resolve, reject) => {
+            void this.runQuery(resolve, reject);
+        });
         void this.watch();
     }
 
@@ -173,16 +179,44 @@ export class LiveCache {
         return this.cache.slice(this.options?.skip, this.options?.limit);
     }
 
-    private async runQuery(): Promise<void> {
-        this.cache = await this.collection.find(this.options?.query ?? {}, {
-            projection: this.options?.projection
+    public isReady(): boolean {
+        return this.ready;
+    }
+
+    public async waitToBeReady(): Promise<void> {
+        await this.readyPromise;
+    }
+
+    private async runQuery(resolve: Resolver<void>, reject: Rejecter): Promise<void> {
+        const documents = await this.collection.find(this.options?.query ?? {}, {
+            projection: this.options?.projection,
+            sort: this.options?.sort
         }).toArray();
+
+        documents.forEach(doc => {
+            this.cache.push(doc);
+            this.index[doc._id.toHexString()] = doc;
+        });
+
+        this.changeEventsBuffer.forEach(changeEvent => {
+            this.onChangeEvent(changeEvent);
+        });
+
+        this.changeEventsBuffer.splice(0);
+
+        this.ready = true;
+
+        resolve();
     }
 
     private async watch(): Promise<void> {
         const changeStream = this.collection.watch();
         changeStream.on('change', (changeEvent: Document) => {
-            this.onChangeEvent(changeEvent);
+            if (this.ready) {
+                this.onChangeEvent(changeEvent);
+            } else {
+                this.changeEventsBuffer.push(changeEvent);
+            }
         });
     }
 
@@ -212,5 +246,24 @@ export class LiveCache {
         if (isDeleteEvent(changeEvent)) {
             this.deleteDocument(changeEvent);
         }
+    }
+}
+
+export function createQueryHash(db: string, collection: string, query: Document, projection: Document, sort: Document): string {
+    const md5 = new Bun.CryptoHasher('md5');
+    md5.update(JSON.stringify({ db, collection, query, projection, sort }));
+    return md5.digest('hex');
+}
+
+export class CacheManager {
+    private readonly caches: Record<string, LiveCache> = {};
+
+    getCache(collection: Collection, cacheOptions: CacheOptions): LiveCache {
+        const queryHash = createQueryHash(collection.dbName, collection.collectionName, cacheOptions.query ?? {}, cacheOptions.projection ?? {}, cacheOptions.sort ?? {});
+        if (this.caches[queryHash] === undefined) {
+            this.caches[queryHash] = new LiveCache(collection, cacheOptions);
+        }
+
+        return this.caches[queryHash];
     }
 }
