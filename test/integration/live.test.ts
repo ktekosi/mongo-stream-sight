@@ -1,4 +1,4 @@
-import { type Db, MongoClient, ObjectId } from 'mongodb';
+import { type Db, MongoClient, ObjectId, type WriteConcernSettings } from 'mongodb';
 import axios from 'axios';
 import { afterAll, beforeAll, describe, test, expect, afterEach, beforeEach } from 'bun:test';
 import { type MongoStreamSightServer, startApp } from '../../src/app.ts';
@@ -8,17 +8,17 @@ describe('Server Integration Tests', () => {
     const serverUrl: string = 'http://localhost:8000';
     const mongoUri: string = 'mongodb://root:password@mongo1,mongo2,mongo3/admin?replicaSet=rs0';
     let client: MongoClient;
-    let db: Db;
     let server: MongoStreamSightServer;
     const DB_NAME = 'test';
     const LISTEN_PORT = 8000;
+
+    const writeConcern: WriteConcernSettings = { w: 'majority', journal: true, wtimeoutMS: 100 };
 
     beforeAll(async() => {
         // Connect to MongoDB
         client = new MongoClient(mongoUri);
         await client.connect();
-        db = client.db(DB_NAME);
-
+        await client.db(DB_NAME).dropDatabase();
         // Start the Live Cache Server
         // server = await startApp(LISTEN_PORT, mongoUri);
     });
@@ -33,7 +33,7 @@ describe('Server Integration Tests', () => {
     });
 
     beforeEach(async() => {
-        await db.dropDatabase();
+        await client.db(DB_NAME).dropDatabase();
     });
 
     afterEach(async() => {
@@ -41,11 +41,11 @@ describe('Server Integration Tests', () => {
     });
 
     test('Update Fields Not in the Filter', async() => {
-        const collection = db.collection('users');
+        const collection = client.db(DB_NAME).collection('users');
 
         // Manually create ObjectId values
-        const john = { _id: new ObjectId(), name: 'John', age: 30 };
-        const jane = { _id: new ObjectId(), name: 'Jane', age: 25 };
+        const john = { _id: new ObjectId(), name: 'John', age: 10 };
+        const jane = { _id: new ObjectId(), name: 'Jane', age: 15 };
 
         // Insert documents with manual _id values
         const documents = [john, jane];
@@ -68,14 +68,49 @@ describe('Server Integration Tests', () => {
         expect(response.data).toEqual([JSON.parse(JSON.stringify(john))]);
 
         // Update fields that aren't in the filter
-        await collection.updateOne(filter, { $set: { age: 35 } }, { writeConcern: { w: 'majority', journal: true, wtimeoutMS: 100 } });
-
-        await sleep(10);
+        await collection.updateOne(filter, { $set: { age: 5 } }, { writeConcern });
 
         // Check the updated values of the fields are now returned
         const updatedResponse = await axios.post(serverUrl, request);
 
         // Check the update has been reflected in the cache
-        expect(updatedResponse.data).toEqual([JSON.parse(JSON.stringify(Object.assign({}, john, { age: 35 })))]);
+        expect(updatedResponse.data).toEqual([JSON.parse(JSON.stringify(Object.assign({}, john, { age: 5 })))]);
+    });
+
+    test('Check for Newly Inserted Documents', async() => {
+        const COLLECTION_NAME = 'users';
+        const collection = client.db(DB_NAME).collection(COLLECTION_NAME);
+
+        // Pre-existing documents
+        const existingUser = { _id: new ObjectId(), name: 'Existing', age: 30 };
+        await collection.insertOne(existingUser);
+
+        // Find documents by filter
+        const filter = { age: { $gt: 20 } };
+        const request = {
+            method: 'find',
+            params: {
+                db: DB_NAME,
+                collection: COLLECTION_NAME,
+                query: filter
+            }
+        };
+
+        const initialResponse = await axios.post(serverUrl, request);
+        expect(initialResponse.data).toEqual([JSON.parse(JSON.stringify(existingUser))]);
+
+        // await sleep(1000);
+
+        // Insert new documents, some of which match the filter
+        const newUser1 = { _id: new ObjectId(), name: 'NewUser1', age: 25 }; // This should match
+        const newUser2 = { _id: new ObjectId(), name: 'NewUser2', age: 18 }; // This should not match
+        const newUser3 = { _id: new ObjectId(), name: 'NewUser3', age: 30 }; // This should match
+        const newDocuments = [newUser1, newUser2, newUser3];
+        await collection.insertMany(newDocuments, { writeConcern });
+
+        // Check that only the new documents matching the filter are returned
+        const updatedResponse = await axios.post(serverUrl, request);
+        const expectedDocuments = [existingUser, newUser1, newUser3].map(doc => JSON.parse(JSON.stringify(doc)));
+        expect(updatedResponse.data).toEqual(expectedDocuments);
     });
 });
