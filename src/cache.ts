@@ -1,4 +1,4 @@
-import { type Collection, type Document, type WithId, type UpdateDescription } from 'mongodb';
+import { type Collection, type Document, type WithId, type UpdateDescription, type ChangeStream } from 'mongodb';
 import { deletePath, getValueByPath, insertOrdered, setValueByPath } from './utils';
 import { documentMatchesQuery } from './query';
 
@@ -40,6 +40,18 @@ interface DeleteEvent {
 
 function isDeleteEvent(event: Document): event is DeleteEvent {
     return event.operationType === 'delete';
+}
+
+interface DropEvent {
+    operationType: 'drop'
+    ns: {
+        db: string
+        coll: string
+    }
+}
+
+function isDropEvent(event: Document): event is DropEvent {
+    return event.operationType === 'drop';
 }
 
 type RecordIndex = Record<string, WithId<Document>>;
@@ -167,12 +179,13 @@ export class LiveCache {
     private ready: boolean = false;
     private readonly changeEventsBuffer: Document[] = [];
     private readonly readyPromise: Promise<void>;
+    private changeStream: ChangeStream;
 
     constructor(private readonly collection: Collection, private readonly options?: CacheOptions) {
         this.readyPromise = new Promise((resolve, reject) => {
             void this.runQuery(resolve, reject);
         });
-        void this.watch();
+        this.changeStream = this.watch();
     }
 
     public getData(): Document[] {
@@ -185,6 +198,10 @@ export class LiveCache {
 
     public async waitToBeReady(): Promise<void> {
         await this.readyPromise;
+    }
+
+    public async stop(): Promise<void> {
+        await this.changeStream.close();
     }
 
     private async runQuery(resolve: Resolver<void>, reject: Rejecter): Promise<void> {
@@ -209,15 +226,18 @@ export class LiveCache {
         resolve();
     }
 
-    private async watch(): Promise<void> {
+    private watch(): ChangeStream {
         const changeStream = this.collection.watch();
         changeStream.on('change', (changeEvent: Document) => {
+            console.log('changeEvent:', changeEvent);
             if (this.ready) {
                 this.onChangeEvent(changeEvent);
             } else {
                 this.changeEventsBuffer.push(changeEvent);
             }
         });
+
+        return changeStream;
     }
 
     private insertDocument(insertEvent: InsertEvent): void {
@@ -230,6 +250,17 @@ export class LiveCache {
 
     private deleteDocument(deleteEvent: DeleteEvent): void {
         deleteDocument(deleteEvent, this.cache, this.index);
+    }
+
+    private async dropCollection(dropEvent: DropEvent): Promise<void> {
+        this.cache.length = 0;
+        Object.keys(this.index).forEach(key => delete this.index[key]);
+
+        // TODO: check performance on deleting keys
+
+        await this.changeStream.close();
+
+        this.changeStream = this.watch();
     }
 
     private onChangeEvent(changeEvent: Document): void {
@@ -245,6 +276,10 @@ export class LiveCache {
 
         if (isDeleteEvent(changeEvent)) {
             this.deleteDocument(changeEvent);
+        }
+
+        if (isDropEvent(changeEvent)) {
+            void this.dropCollection(changeEvent);
         }
     }
 }
@@ -265,5 +300,9 @@ export class CacheManager {
         }
 
         return this.caches[queryHash];
+    }
+
+    async stop(): Promise<void> {
+        await Promise.all(Object.values(this.caches).map(async(liveCache) => { await liveCache.stop(); }));
     }
 }
