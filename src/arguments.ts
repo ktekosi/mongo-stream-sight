@@ -5,6 +5,8 @@ export interface Arguments {
     port: number
 }
 
+const env = typeof Bun !== 'undefined' ? Bun.env : process.env;
+
 // Define yargs argument configuration
 export const argv = yargs(hideBin(process.argv))
     .option('mongo', {
@@ -16,7 +18,7 @@ export const argv = yargs(hideBin(process.argv))
         alias: 'p',
         description: 'Port to listen to',
         type: 'number',
-        default: parseInt(Bun.env.PORT ?? '8000')
+        default: parseInt(env.PORT ?? '8000')
     })
     .demandOption(['mongo'], 'Please provide the MongoDB URI using the -m or --mongo option')
     .help()

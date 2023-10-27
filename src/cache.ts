@@ -1,6 +1,14 @@
-import { type Collection, type Document, type WithId, type UpdateDescription, type ChangeStream } from 'mongodb';
+import {
+    type Collection,
+    type Document,
+    type WithId,
+    type UpdateDescription,
+    type ChangeStream,
+    type MongoClient
+} from 'mongodb';
 import { deletePath, getValueByPath, insertOrdered, setValueByPath } from './utils';
 import { documentMatchesQuery } from './query';
+import * as crypto from 'crypto';
 
 export interface CacheOptions {
     query?: Document
@@ -95,6 +103,7 @@ export function sortFieldChanged(sort: Document, updates: UpdateDescription): bo
 export function insertIntoCache(cache: Document[], doc: Document, sortOption?: Record<string, number>): void {
     const sortFields = Object.keys(sortOption ?? {});
     if (sortOption === undefined || sortFields.length === 0) {
+        console.log(`Pushing doc ${doc._id} to cache`);
         cache.push(doc);
         return;
     }
@@ -180,12 +189,18 @@ export class LiveCache {
     private readonly changeEventsBuffer: Document[] = [];
     private readonly readyPromise: Promise<void>;
     private changeStream: ChangeStream;
+    private closing: boolean = false;
+    private collection: Collection;
 
-    constructor(private readonly collection: Collection, private readonly options?: CacheOptions) {
+    constructor(private readonly mongo: MongoClient, private readonly dbName: string, private readonly collectionName: string, private readonly options?: CacheOptions) {
+        console.log(`Creating live cache on collection: ${dbName}/${collectionName} for query:`, JSON.stringify(options?.query));
+        this.collection = mongo.db(dbName).collection(collectionName);
+
+        this.changeStream = this.watch();
+
         this.readyPromise = new Promise((resolve, reject) => {
             void this.runQuery(resolve, reject);
         });
-        this.changeStream = this.watch();
     }
 
     public getData(): Document[] {
@@ -201,6 +216,7 @@ export class LiveCache {
     }
 
     public async stop(): Promise<void> {
+        this.closing = true;
         await this.changeStream.close();
     }
 
@@ -219,21 +235,35 @@ export class LiveCache {
             this.onChangeEvent(changeEvent);
         });
 
-        this.changeEventsBuffer.splice(0);
+        this.changeEventsBuffer.length = 0;
 
         this.ready = true;
 
         resolve();
     }
 
+    public rewatch(): void {
+        this.collection = this.mongo.db(this.dbName).collection(this.collectionName);
+        this.changeStream = this.watch();
+    }
+
     private watch(): ChangeStream {
+        console.log(`Attaching to changeStream for ${this.dbName}/${this.collectionName} on query:`, JSON.stringify(this.options?.query));
         const changeStream = this.collection.watch();
+
         changeStream.on('change', (changeEvent: Document) => {
-            console.log('changeEvent:', changeEvent);
+            console.log(`changeEvent for ${this.dbName}/${this.collectionName}:`, changeEvent, 'for query:', JSON.stringify(this.options?.query));
             if (this.ready) {
                 this.onChangeEvent(changeEvent);
             } else {
                 this.changeEventsBuffer.push(changeEvent);
+            }
+        });
+
+        changeStream.on('close', () => {
+            if (!this.closing) {
+                console.log(`Got close changeStream event for ${this.dbName}/${this.collectionName} for query: `, JSON.stringify(this.options?.query));
+                this.rewatch();
             }
         });
 
@@ -257,10 +287,6 @@ export class LiveCache {
         Object.keys(this.index).forEach(key => delete this.index[key]);
 
         // TODO: check performance on deleting keys
-
-        await this.changeStream.close();
-
-        this.changeStream = this.watch();
     }
 
     private onChangeEvent(changeEvent: Document): void {
@@ -284,19 +310,29 @@ export class LiveCache {
     }
 }
 
+export function createMD5Hash(inputString: string): string {
+    if (typeof Bun === 'undefined') {
+        const md5 = crypto.createHash('md5');
+        md5.update(inputString);
+        return md5.digest('hex');
+    } else {
+        const md5 = new Bun.CryptoHasher('md5');
+        md5.update(inputString);
+        return md5.digest('hex');
+    }
+}
+
 export function createQueryHash(db: string, collection: string, query: Document, projection: Document, sort: Document): string {
-    const md5 = new Bun.CryptoHasher('md5');
-    md5.update(JSON.stringify({ db, collection, query, projection, sort }));
-    return md5.digest('hex');
+    return createMD5Hash(JSON.stringify({ db, collection, query, projection, sort }));
 }
 
 export class CacheManager {
     private readonly caches: Record<string, LiveCache> = {};
 
-    getCache(collection: Collection, cacheOptions: CacheOptions): LiveCache {
-        const queryHash = createQueryHash(collection.dbName, collection.collectionName, cacheOptions.query ?? {}, cacheOptions.projection ?? {}, cacheOptions.sort ?? {});
+    getCache(mongo: MongoClient, dbName: string, collectionName: string, cacheOptions: CacheOptions): LiveCache {
+        const queryHash = createQueryHash(dbName, collectionName, cacheOptions.query ?? {}, cacheOptions.projection ?? {}, cacheOptions.sort ?? {});
         if (this.caches[queryHash] === undefined) {
-            this.caches[queryHash] = new LiveCache(collection, cacheOptions);
+            this.caches[queryHash] = new LiveCache(mongo, dbName, collectionName, cacheOptions);
         }
 
         return this.caches[queryHash];
@@ -304,5 +340,9 @@ export class CacheManager {
 
     async stop(): Promise<void> {
         await Promise.all(Object.values(this.caches).map(async(liveCache) => { await liveCache.stop(); }));
+    }
+
+    getAllCaches(): Record<string, LiveCache> {
+        return this.caches;
     }
 }

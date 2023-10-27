@@ -40,7 +40,7 @@ export async function createApi(mongoUri: string): Promise<ApiFunction[]> {
                 limit,
                 sort
             };
-            const liveCache: LiveCache = cacheManager.getCache(mongo.db(db).collection(collection), cacheOptions);
+            const liveCache: LiveCache = cacheManager.getCache(mongo, db, collection, cacheOptions);
 
             if (!liveCache.isReady()) {
                 await liveCache.waitToBeReady();
@@ -56,4 +56,8 @@ export async function createApi(mongoUri: string): Promise<ApiFunction[]> {
 export async function stopApi(): Promise<void> {
     await cacheManager.stop();
     await mongo.close(true);
+}
+
+export function getCaches(): Record<string, LiveCache> {
+    return cacheManager.getAllCaches();
 }

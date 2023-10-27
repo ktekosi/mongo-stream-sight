@@ -1,5 +1,3 @@
-import { type Document, type UpdateDescription } from 'mongodb';
-
 export function insertOrdered<T>(arr: T[], item: T, compare: (a: T, b: T) => number): number {
     const index = arr.findIndex((element) => compare(item, element) <= 0);
     let insertIndex: number;
