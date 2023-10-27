@@ -1,9 +1,11 @@
 import { type Arguments, argv } from './arguments.ts';
-import { startServer } from './server.ts';
-import { createApi } from './api.ts';
+import { startApp } from './app.ts';
 
-async function main(argv: Arguments): Promise<void> {
-    startServer(argv.port, await createApi(argv.mongo));
+export async function main(argv: Arguments): Promise<void> {
+    const app = await startApp(argv.port, argv.mongo);
+
+    process.on('SIGINT', app.shutdown);
+    process.on('SIGTERM', app.shutdown);
 }
 
 void main(argv);

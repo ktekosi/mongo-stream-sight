@@ -1,9 +1,10 @@
-import { type z } from 'zod';
+import { z } from 'zod';
+import { type Server } from 'bun';
 
-export function startServer(port: number, apiFunctions: ApiFunction[]): void {
+export function startServer(port: number, apiFunctions: ApiFunction[]): Server {
     console.log(`Listening on port ${port}`);
 
-    Bun.serve({
+    return Bun.serve({
         async fetch(req: Request): Promise<Response> {
             switch (req.method) {
                 case 'GET':
@@ -29,17 +30,30 @@ export interface ApiFunction {
     return: z.ZodSchema<any>
 }
 
+const ApiRequestSchema = z.object({
+    method: z.string(),
+    params: z.record(z.unknown())
+});
+
+type ApiRequest = z.infer<typeof ApiRequestSchema>;
+
 async function handlePost(req: Request, apiFunctions: ApiFunction[]): Promise<Response> {
     try {
         const body = await req.json();
 
-        const targetFunction = apiFunctions.find(f => f.name === body.method);
+        const bodyValidation = ApiRequestSchema.safeParse(body);
+
+        if (!bodyValidation.success) {
+            return new Response('Invalid json', { status: 400 });
+        }
+
+        const targetFunction = apiFunctions.find(f => f.name === bodyValidation.data.method);
 
         if (targetFunction === undefined) {
             return new Response('Method not found', { status: 404 });
         }
 
-        const paramsValidation = targetFunction.params.safeParse(body.params);
+        const paramsValidation = targetFunction.params.safeParse(bodyValidation.data.params);
         if (!paramsValidation.success) {
             return new Response('Invalid parameters', { status: 400 });
         }
