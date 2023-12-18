@@ -10,8 +10,6 @@ pipelines:
     - parallel:
         - step:
             name: Build and Test
-            caches:
-              - node
             script:
               - bun install
               - bun test
@@ -19,5 +17,3 @@ pipelines:
             name: Code linting
             script:
               - bun lint .
-            caches:
-              - node
