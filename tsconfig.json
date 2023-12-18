@@ -5,10 +5,10 @@
   
       // enable latest features
       "lib": ["esnext"],
-      "module": "commonjs",
+      "module": "NodeNext",
       "target": "esnext",
   
-      "moduleResolution": "bundler",
+      "moduleResolution": "NodeNext",
       "noEmit": true,
       "allowImportingTsExtensions": true,
       "moduleDetection": "force",

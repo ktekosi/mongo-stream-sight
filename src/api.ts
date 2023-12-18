@@ -32,7 +32,6 @@ export async function createApi(mongoUri: string): Promise<ApiFunction[]> {
         params: FindParamsSchema,
         return: z.array(z.any()),
         func: async({ db, collection, query, projection, skip, limit, sort }: FindParams): Promise<Document[]> => {
-            console.log('Got query:', query);
             const cacheOptions: CacheOptions = {
                 query,
                 projection,

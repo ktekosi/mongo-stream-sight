@@ -103,7 +103,6 @@ export function sortFieldChanged(sort: Document, updates: UpdateDescription): bo
 export function insertIntoCache(cache: Document[], doc: Document, sortOption?: Record<string, number>): void {
     const sortFields = Object.keys(sortOption ?? {});
     if (sortOption === undefined || sortFields.length === 0) {
-        console.log(`Pushing doc ${doc._id} to cache`);
         cache.push(doc);
         return;
     }
@@ -193,7 +192,6 @@ export class LiveCache {
     private collection: Collection;
 
     constructor(private readonly mongo: MongoClient, private readonly dbName: string, private readonly collectionName: string, private readonly options?: CacheOptions) {
-        console.log(`Creating live cache on collection: ${dbName}/${collectionName} for query:`, JSON.stringify(options?.query));
         this.collection = mongo.db(dbName).collection(collectionName);
 
         this.changeStream = this.watch();
@@ -248,11 +246,9 @@ export class LiveCache {
     }
 
     private watch(): ChangeStream {
-        console.log(`Attaching to changeStream for ${this.dbName}/${this.collectionName} on query:`, JSON.stringify(this.options?.query));
         const changeStream = this.collection.watch();
 
         changeStream.on('change', (changeEvent: Document) => {
-            console.log(`changeEvent for ${this.dbName}/${this.collectionName}:`, changeEvent, 'for query:', JSON.stringify(this.options?.query));
             if (this.ready) {
                 this.onChangeEvent(changeEvent);
             } else {
@@ -262,7 +258,6 @@ export class LiveCache {
 
         changeStream.on('close', () => {
             if (!this.closing) {
-                console.log(`Got close changeStream event for ${this.dbName}/${this.collectionName} for query: `, JSON.stringify(this.options?.query));
                 this.rewatch();
             }
         });
