@@ -1,82 +1,84 @@
+import { Server } from 'bun';
 import { z } from 'zod';
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'http';
+// import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'http';
 
-interface ResponseOptions {
-    status: number
-}
 
-class Response {
-    constructor(public readonly body: string, public readonly options: ResponseOptions) {
-    }
-}
-
-class Request {
-    constructor(private readonly req: IncomingMessage) {
-
-    }
-
-    async json(): Promise<any> {
-        return await new Promise((resolve, reject) => {
-            let body = '';
-            this.req.on('data', chunk => {
-                body += chunk.toString();
-            });
-            this.req.on('end', () => {
-                resolve(JSON.parse(body));
-            });
-            this.req.on('error', (err) => {
-                reject(err);
-            });
-        });
-    }
-}
-
-// export function startServer(port: number, apiFunctions: ApiFunction[], status: () => any): Server {
-//     console.log(`Listening on port ${port}`);
-//
-//     return Bun.serve({
-//         async fetch(req: Request): Promise<Response> {
-//             switch (req.method) {
-//                 case 'GET':
-//                     return await getStatus(req, status);
-//                 case 'POST':
-//                     return await handlePost(req, apiFunctions);
-//             }
-//
-//             return new Response('Method not allowed', { status: 405 });
-//         },
-//         port
-//     });
+// interface ResponseOptions {
+//     status: number
 // }
 
-function writeResponse(response: Response, res: ServerResponse): void {
-    res.writeHead(response.options.status ?? 200, { 'Content-Type': 'application/json' });
-    res.end(response.body);
-}
+// class Response {
+//     constructor(public readonly body: string, public readonly options: ResponseOptions) {
+//     }
+// }
+
+// class Request {
+//     constructor(private readonly req: IncomingMessage) {
+
+//     }
+
+//     async json(): Promise<any> {
+//         return await new Promise((resolve, reject) => {
+//             let body = '';
+//             this.req.on('data', chunk => {
+//                 body += chunk.toString();
+//             });
+//             this.req.on('end', () => {
+//                 resolve(JSON.parse(body));
+//             });
+//             this.req.on('error', (err) => {
+//                 reject(err);
+//             });
+//         });
+//     }
+// }
 
 export function startServer(port: number, apiFunctions: ApiFunction[], status: () => any): Server {
-    const server = createServer((req: IncomingMessage, res: ServerResponse): void => {
-        void (async() => {
-            const request = new Request(req);
+    console.log(`Listening on port ${port}`);
+
+    return Bun.serve({
+        async fetch(req: Request): Promise<Response> {
             switch (req.method) {
                 case 'GET':
-                    writeResponse(await getStatus(status), res);
-                    return;
+                    return await getStatus(status);
                 case 'POST':
-                    writeResponse(await handlePost(request, apiFunctions), res);
-                    return;
+                    return await handlePost(req, apiFunctions);
             }
 
-            writeResponse(new Response('Method not allowed', { status: 405 }), res);
-        })();
+            return new Response('Method not allowed', { status: 405 });
+        },
+        port
     });
-
-    server.listen(port, () => {
-        console.log(`Listening on port ${port}`);
-    });
-
-    return server;
 }
+
+// function writeResponse(response: Response, res: ServerResponse): void {
+//     res.writeHead(response.options.status ?? 200, { 'Content-Type': 'application/json' });
+//     res.end(response.body);
+// }
+
+// export function startServer(port: number, apiFunctions: ApiFunction[], status: () => any): Server {
+//     const server = createServer((req: IncomingMessage, res: ServerResponse): void => {
+//         void (async() => {
+//             const request = new Request(req);
+//             switch (req.method) {
+//                 case 'GET':
+//                     writeResponse(await getStatus(status), res);
+//                     return;
+//                 case 'POST':
+//                     writeResponse(await handlePost(request, apiFunctions), res);
+//                     return;
+//             }
+
+//             writeResponse(new Response('Method not allowed', { status: 405 }), res);
+//         })();
+//     });
+
+//     server.listen(port, () => {
+//         console.log(`Listening on port ${port}`);
+//     });
+
+//     return server;
+// }
 
 async function getStatus(status: () => any): Promise<Response> {
     return new Response(JSON.stringify(status()), { status: 200 });

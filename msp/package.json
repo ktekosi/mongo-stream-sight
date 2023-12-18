@@ -1,0 +1,62 @@
+{
+  "name": "msp-usage-service",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "lint": "eslint .",
+    "gcp-build": "",
+    "typecheck": "tsc --project tsconfig.no-build.json",
+    "test": "source local-env.sh && nyc mocha",
+    "test:bamboo": "mocha --config .mocharc.bamboo.json",
+    "start:reporting-service": "cd dist/reporting_service && functions-framework --signature-type=event --target=report",
+    "emulate:censornet": "CENSORNET_PORT=8090 node -r ts-node/register ./functions/email_security_collector/test/censornet_simulator/index.ts",
+    "emulate:servicemode": "node -r ts-node/register packages/gz_service_mode/src/simulator/index.ts",
+    "emulate:zimperium": "node -r ts-node/register functions/mobile_security_collector/src/zimperiumSimulator/index.ts",
+    "start:email-security-collector": "cd dist/email_security_collector && functions-framework --signature-type=event --target=syncEmailSecurityUsage",
+    "update": "cd dist/update && node index.js",
+    "count-usage": "source local-env.sh && node -r ts-node/register -r tsconfig-paths/register functions/monolith/src/index.ts run",
+    "profile:default": "source local-env.sh && node --trace-gc --prof -r ts-node/register -r tsconfig-paths/register functions/monolith/src/index.ts run",
+    "profile:flamegraph": "source local-env.sh && 0x -- node -r ts-node/register -r tsconfig-paths/register functions/monolith/src/index.ts run"
+  },
+  "engines": {
+    "npm": ">=9.0.0 <10.0.0",
+    "node": ">=18.0.0 <19.0.0"
+  },
+  "author": "mferaru",
+  "license": "ISC",
+  "dependencies": {
+    "@google-cloud/datastore": "7.1.0",
+    "@google-cloud/functions-framework": "3.1.2",
+    "@google-cloud/pubsub": "3.5.0",
+    "@google/events": "^5.4.0",
+    "moment": "^2.29.4",
+    "mysql2": "3.2.0",
+    "zod": "^3.21.0"
+  },
+  "devDependencies": {
+    "@types/chai": "^4.3.4",
+    "@types/chai-as-promised": "^7.1.5",
+    "@types/mocha": "^10.0.1",
+    "@types/mockdate": "^3.0.0",
+    "@typescript-eslint/eslint-plugin": "^5.45.1",
+    "0x": "^5.7.0",
+    "axios": "^1.4.0",
+    "chai": "^4.3.7",
+    "chai-as-promised": "^7.1.1",
+    "esbuild": "0.18.17",
+    "eslint": "8.22.0",
+    "eslint-config-standard-with-typescript": "^23.0.0",
+    "eslint-plugin-import": "^2.26.0",
+    "eslint-plugin-n": "^15.6.0",
+    "eslint-plugin-promise": "^6.1.1",
+    "mocha": "^10.1.0",
+    "mocha-bamboo-reporter": "^1.1.2",
+    "mockdate": "^3.0.5",
+    "nyc": "^15.1.0",
+    "ts-node": "^10.9.1",
+    "ts-paths": "^0.1.3",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^4.9.3",
+    "wait-port": "^1.0.4"
+  }
+}

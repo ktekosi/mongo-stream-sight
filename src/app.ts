@@ -15,7 +15,7 @@ export async function startApp(port: number, mongo: string): Promise<MongoStream
     const server = startServer(port, await createApi(mongo), status);
 
     const shutdown = (): void => {
-        server.close();
+        server.stop();
         void stopApi();
     };
 

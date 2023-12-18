@@ -1,16 +1,17 @@
-import { type Db, MongoClient, ObjectId, type WriteConcernSettings } from 'mongodb';
+import { MongoClient, ObjectId, type WriteConcernSettings } from 'mongodb';
 import axios from 'axios';
 import { afterAll, beforeAll, describe, test, expect, afterEach, beforeEach } from 'bun:test';
 import { type MongoStreamSightServer, startApp } from '../../src/app.ts';
-import { sleep } from 'bun';
+import { sleep, type Subprocess } from 'bun';
+import waitPort from 'wait-port';
 
 describe('Server Integration Tests', () => {
-    const serverUrl: string = 'http://localhost:8000';
+    const LISTEN_PORT = 8000;
+    const serverUrl: string = `http://localhost:${LISTEN_PORT}`;
     const mongoUri: string = 'mongodb://root:password@mongo1,mongo2,mongo3/admin?replicaSet=rs0';
     let client: MongoClient;
     let server: MongoStreamSightServer;
     const DB_NAME = 'test';
-    const LISTEN_PORT = 8000;
 
     const writeConcern: WriteConcernSettings = { w: 'majority', journal: true, wtimeoutMS: 100 };
 
@@ -20,7 +21,7 @@ describe('Server Integration Tests', () => {
         await client.connect();
         await client.db(DB_NAME).dropDatabase();
         // Start the Live Cache Server
-        // server = await startApp(LISTEN_PORT, mongoUri);
+        server = await startApp(LISTEN_PORT, mongoUri);
     });
 
     afterAll(async() => {
@@ -29,7 +30,7 @@ describe('Server Integration Tests', () => {
 
         // Shutdown the server
         // console.log('Shutting down server');
-        // server.shutdown();
+        server.shutdown();
     });
 
     beforeEach(async() => {
