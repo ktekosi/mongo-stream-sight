@@ -1,7 +1,6 @@
-import { Server } from 'bun';
+import { type Server } from 'bun';
 import { z } from 'zod';
 // import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'http';
-
 
 // interface ResponseOptions {
 //     status: number
