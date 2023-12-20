@@ -14,21 +14,21 @@ jobs:
     services:
       mongo1:
         image: mongo:6
-        options: --replSet rs0 --keyFile /mongo-keyfile --bind_ip_all
+        command: --replSet rs0 --keyFile /mongo-keyfile --bind_ip_all
         env:
           MONGO_INITDB_ROOT_USERNAME: root
           MONGO_INITDB_ROOT_PASSWORD: password
 
       mongo2:
         image: mongo:6
-        options: --replSet rs0 --keyFile /mongo-keyfile --bind_ip_all
+        command: --replSet rs0 --keyFile /mongo-keyfile --bind_ip_all
         env:
           MONGO_INITDB_ROOT_USERNAME: root
           MONGO_INITDB_ROOT_PASSWORD: password
 
       mongo3:
         image: mongo:6
-        options: --replSet rs0 --keyFile /mongo-keyfile --bind_ip_all
+        command: --replSet rs0 --keyFile /mongo-keyfile --bind_ip_all
         env:
           MONGO_INITDB_ROOT_USERNAME: root
           MONGO_INITDB_ROOT_PASSWORD: password
