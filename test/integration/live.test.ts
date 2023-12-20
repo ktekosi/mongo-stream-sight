@@ -13,7 +13,7 @@ describe('Server Integration Tests', () => {
     const MONGO_RS = Bun.env.MONGO_RS ?? 'rs0';
 
     const serverUrl: string = `http://localhost:${LISTEN_PORT}`;
-    const mongoUri: string = `mongodb://${MONGO_USERNAME}${MONGO_PASSWORD !== '' ? `:${MONGO_PASSWORD}` : ''}@${MONGO_HOST}/admin?replicaSet=${MONGO_RS}`;
+    const mongoUri: string = `mongodb://${MONGO_USERNAME}${MONGO_PASSWORD !== '' ? `:${MONGO_PASSWORD}@` : ''}${MONGO_HOST}/admin?replicaSet=${MONGO_RS}`;
     let client: MongoClient;
     let server: MongoStreamSightServer;
     const DB_NAME = 'test';
