@@ -7,10 +7,10 @@ import waitPort from 'wait-port';
 
 describe('Server Integration Tests', () => {
     const LISTEN_PORT = 8000;
-    const MONGO_USERNAME = Bun.env['INPUT_MONGO_USERNAME'] ?? 'root';
-    const MONGO_PASSWORD = Bun.env['INPUT_MONGO_PASSWORD'] ?? 'password';
-    const MONGO_HOST = Bun.env['INPUT_MONGO_HOST'] ?? 'mongo1,mongo2,mongo3';
-    const MONGO_RS = Bun.env['INPUT_MONGO_RS'] ?? 'rs0';
+    const MONGO_USERNAME = Bun.env['MONGO_USERNAME'] ?? 'root';
+    const MONGO_PASSWORD = Bun.env['MONGO_PASSWORD'] ?? 'password';
+    const MONGO_HOST = Bun.env['MONGO_HOST'] ?? 'mongo1,mongo2,mongo3';
+    const MONGO_RS = Bun.env['MONGO_RS'] ?? 'rs0';
 
     const serverUrl: string = `http://localhost:${LISTEN_PORT}`;
     const mongoUri: string = `mongodb://${MONGO_USERNAME}${MONGO_PASSWORD?`:${MONGO_PASSWORD}`:''}@${MONGO_HOST}/admin?replicaSet=${MONGO_RS}`;
