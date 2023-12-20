@@ -6,7 +6,12 @@ on:
   pull_request:
     branches: [ "master" ]
 
-services:
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    services:
       mongo1:
         image: mongo:6
         options: --replSet rs0 --keyFile /mongo-keyfile --bind_ip_all
@@ -27,11 +32,6 @@ services:
         environment:
           - MONGO_INITDB_ROOT_USERNAME=root
           - MONGO_INITDB_ROOT_PASSWORD=password
-
-jobs:
-  build:
-
-    runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v3
