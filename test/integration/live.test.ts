@@ -83,17 +83,17 @@ describe('Server Integration Tests', () => {
         expect(updatedResponse.data).toEqual([JSON.parse(JSON.stringify(Object.assign({}, john, { age: 5 })))]);
     });
 
-    test('Update Fields In the Filter', async () => {
+    test('Update Fields In the Filter', async() => {
         const COLLECTION_NAME = 'users';
         const collection = client.db(DB_NAME).collection(COLLECTION_NAME);
-    
+
         // Insert initial documents
         const user1 = { _id: new ObjectId(), name: 'User1', age: 20 };
         const user2 = { _id: new ObjectId(), name: 'User2', age: 25 };
         const user3 = { _id: new ObjectId(), name: 'User3', age: 30 };
         const documents = [user1, user2, user3];
         await collection.insertMany(documents);
-    
+
         // Filter that includes documents based on age
         const filter = { age: { $gt: 18 } };
         const request = {
@@ -104,36 +104,36 @@ describe('Server Integration Tests', () => {
                 query: filter
             }
         };
-    
+
         // Initial query to cache the documents
         const initialResponse = await axios.post(serverUrl, request);
         expect(initialResponse.data).toEqual(documents.map(doc => JSON.parse(JSON.stringify(doc))));
-    
+
         // Update an in-filter field (age) in a way that it still matches the filter
         await collection.updateOne({ _id: user2._id }, { $set: { age: 27 } }, { writeConcern });
-    
+
         // Query again to check if the cache reflects the updated document
         const updatedResponse = await axios.post(serverUrl, request);
-    
+
         // Create an updated version of user2 for comparison
         const updatedUser2 = { ...user2, age: 27 };
-    
+
         // Check that the updated documents are correctly reflected in the cache
         const expectedDocuments = [user1, updatedUser2, user3].map(doc => JSON.parse(JSON.stringify(doc)));
         expect(updatedResponse.data).toEqual(expectedDocuments);
     });
 
-    test('Update Fields Resulting in Document Exclusion from Cache', async () => {
+    test('Update Fields Resulting in Document Exclusion from Cache', async() => {
         const COLLECTION_NAME = 'users';
         const collection = client.db(DB_NAME).collection(COLLECTION_NAME);
-    
+
         // Insert initial documents
         const user1 = { _id: new ObjectId(), name: 'User1', age: 20 };
         const user2 = { _id: new ObjectId(), name: 'User2', age: 25 };
         const user3 = { _id: new ObjectId(), name: 'User3', age: 30 };
         const documents = [user1, user2, user3];
         await collection.insertMany(documents);
-    
+
         // Filter that includes documents based on age
         const filter = { age: { $gt: 18 } };
         const request = {
@@ -144,33 +144,33 @@ describe('Server Integration Tests', () => {
                 query: filter
             }
         };
-    
+
         // Initial query to cache the documents
         const initialResponse = await axios.post(serverUrl, request);
         expect(initialResponse.data).toEqual(documents.map(doc => JSON.parse(JSON.stringify(doc))));
-    
+
         // Update a document in a way that it no longer matches the filter
         await collection.updateOne({ _id: user2._id }, { $set: { age: 18 } }, { writeConcern });
-    
+
         // Query again to check if the cache reflects the updated document
         const updatedResponse = await axios.post(serverUrl, request);
-    
+
         // Check that user2 is no longer in the cache since it doesn't meet the filter criteria
         const expectedDocuments = [user1, user3].map(doc => JSON.parse(JSON.stringify(doc)));
         expect(updatedResponse.data).toEqual(expectedDocuments);
     });
-    
-    test.skip('Update Document to Match Filter Criteria and Appear in Cache', async () => {
+
+    test.skip('Update Document to Match Filter Criteria and Appear in Cache', async() => {
         const COLLECTION_NAME = 'users';
         const collection = client.db(DB_NAME).collection(COLLECTION_NAME);
-    
+
         // Insert initial documents
         const user1 = { _id: new ObjectId(), name: 'User1', age: 20 };
         const user2 = { _id: new ObjectId(), name: 'User2', age: 15 }; // Initially does not meet the filter criteria
         const user3 = { _id: new ObjectId(), name: 'User3', age: 30 };
         const documents = [user1, user2, user3];
         await collection.insertMany(documents);
-    
+
         // Filter that includes documents based on age
         const filter = { age: { $gt: 18 } };
         const request = {
@@ -181,24 +181,23 @@ describe('Server Integration Tests', () => {
                 query: filter
             }
         };
-    
+
         // Initial query to cache the documents that meet the filter criteria
         const initialResponse = await axios.post(serverUrl, request);
         const expectedInitialDocs = [user1, user3].map(doc => JSON.parse(JSON.stringify(doc)));
         expect(initialResponse.data).toEqual(expectedInitialDocs);
-    
+
         // Update user2 to match the filter criteria
         await collection.updateOne({ _id: user2._id }, { $set: { age: 21 } }, { writeConcern });
-    
+
         // Query again to check if the cache reflects the updated document
         const updatedResponse = await axios.post(serverUrl, request);
-    
+
         // Check that user2 now appears in the cache
         const updatedUser2 = { ...user2, age: 21 };
         const expectedUpdatedDocs = [user1, updatedUser2, user3].map(doc => JSON.parse(JSON.stringify(doc)));
         expect(updatedResponse.data).toEqual(expectedUpdatedDocs);
     });
-    
 
     test('Check for Newly Inserted Documents', async() => {
         const COLLECTION_NAME = 'users';
@@ -237,17 +236,17 @@ describe('Server Integration Tests', () => {
         expect(updatedResponse.data).toEqual(expectedDocuments);
     });
 
-    test('Check Cache After Deleting a Specific Document', async () => {
+    test('Check Cache After Deleting a Specific Document', async() => {
         const COLLECTION_NAME = 'users';
         const collection = client.db(DB_NAME).collection(COLLECTION_NAME);
-    
+
         // Insert multiple documents, including the one to be deleted
         const userToDelete = { _id: new ObjectId(), name: 'UserToDelete', age: 40 };
         const otherUser1 = { _id: new ObjectId(), name: 'OtherUser1', age: 25 };
         const otherUser2 = { _id: new ObjectId(), name: 'OtherUser2', age: 30 };
         const documents = [userToDelete, otherUser1, otherUser2];
         await collection.insertMany(documents);
-    
+
         // Perform a query to ensure all documents are cached
         const filterForCache = {};
         const cacheQueryRequest = {
@@ -258,20 +257,18 @@ describe('Server Integration Tests', () => {
                 query: filterForCache
             }
         };
-    
+
         const initialResponse = await axios.post(serverUrl, cacheQueryRequest);
         expect(initialResponse.data).toEqual(documents.map(doc => JSON.parse(JSON.stringify(doc))));
-    
+
         // Delete the specific document
         await collection.deleteOne({ _id: userToDelete._id });
-    
+
         // Query again to check if the cache has been updated correctly
         const updatedResponse = await axios.post(serverUrl, cacheQueryRequest);
-    
+
         // Expect the cache to return all documents except the deleted one
         const expectedDocuments = [otherUser1, otherUser2].map(doc => JSON.parse(JSON.stringify(doc)));
         expect(updatedResponse.data).toEqual(expectedDocuments);
     });
-    
-    
 });
