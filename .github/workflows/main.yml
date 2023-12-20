@@ -35,8 +35,8 @@ jobs:
     - name: Test
       run: bun test
       env:
-        - MONGO_USERNAME: ''
-        - MONGO_PASSWORD: ''
+        - MONGO_USERNAME:
+        - MONGO_PASSWORD:
         - MONGO_HOST: localhost
         - MONGO_RS: rs0
 
