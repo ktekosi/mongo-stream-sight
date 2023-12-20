@@ -6,6 +6,28 @@ on:
   pull_request:
     branches: [ "master" ]
 
+services:
+      mongo1:
+        image: mongo:6
+        options: --replSet rs0 --keyFile /mongo-keyfile --bind_ip_all
+        environment:
+          - MONGO_INITDB_ROOT_USERNAME=root
+          - MONGO_INITDB_ROOT_PASSWORD=password
+
+      mongo2:
+        image: mongo:6
+        options: --replSet rs0 --keyFile /mongo-keyfile --bind_ip_all
+        environment:
+          - MONGO_INITDB_ROOT_USERNAME=root
+          - MONGO_INITDB_ROOT_PASSWORD=password
+
+      mongo3:
+        image: mongo:6
+        options: --replSet rs0 --keyFile /mongo-keyfile --bind_ip_all
+        environment:
+          - MONGO_INITDB_ROOT_USERNAME=root
+          - MONGO_INITDB_ROOT_PASSWORD=password
+
 jobs:
   build:
 
@@ -13,6 +35,56 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
+    
+    - name: Install MongoDB Shell
+      run: sudo apt-get install -y mongodb-mongosh jq
+    - name: Create MongoDB Keyfile
+      run: |
+        openssl rand -base64 756 > mongo-keyfile
+        sudo chmod 600 mongo-keyfile
+        sudo chown 999:999 mongo-keyfile # UID and GID for the user in the MongoDB Docker image
+    - name: Copy Keyfile to Docker Containers
+      run: |
+        docker cp mongo-keyfile $(docker ps -qf "name=mongo1"):/mongo-keyfile
+        docker cp mongo-keyfile $(docker ps -qf "name=mongo2"):/mongo-keyfile
+        docker cp mongo-keyfile $(docker ps -qf "name=mongo3"):/mongo-keyfile
+    - name: Restart MongoDB Containers
+      run: |
+        docker restart $(docker ps -qf "name=mongo1")
+        docker restart $(docker ps -qf "name=mongo2")
+        docker restart $(docker ps -qf "name=mongo3")
+    - name: Wait for MongoDB Containers to be Ready
+      run: sleep 5 # Wait for MongoDB containers to fully restart
+    - name: Initiate MongoDB Replica Set
+      run: |
+        mongosh --eval 'rs.initiate({_id: "rs0", members: [{ _id: 0, host: "mongo1:27017" }, { _id: 1, host: "mongo2:27017" }, { _id: 2, host: "mongo3:27017" }])'
+        sleep 5 # Wait for the replica set to initiate
+    - name: Check MongoDB Replica Set Status
+      run: |
+        uri="mongodb://root:password@mongo1,mongo2,mongo3/admin"
+        timeout=20
+        start_time=$(date +%s)
+
+        echo "Checking MongoDB replica set status..."
+        while true; do
+          current_time=$(date +%s)
+          elapsed=$((current_time - start_time))
+
+          if [ $elapsed -ge $timeout ]; then
+            echo "Timeout reached. MongoDB replica set did not become operational."
+            exit 1
+          fi
+
+          rs_status=$(mongosh --quiet "$uri" --json --eval='rs.status()' | jq -r '.ok["$numberInt"]')
+          if [ "$rs_status" == "1" ]; then
+            echo "MongoDB replica set is up and running."
+            break
+          else
+            echo "Waiting for MongoDB replica set to be fully operational..."
+            sleep 1
+          fi
+        done
+
     - name: Setup Bun
       run: |
         curl -fsSL https://bun.sh/install | bash
@@ -22,4 +94,4 @@ jobs:
     - name: Lint
       run: bun lint
     - name: Test
-      run: bun test test/unit/*.ts
+      run: bun test
