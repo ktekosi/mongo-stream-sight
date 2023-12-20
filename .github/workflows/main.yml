@@ -31,13 +31,11 @@ jobs:
       with:
         mongodb-version: 6
         mongodb-replica-set: rs0
-        mongodb-username: root
-        mongodb-password: password
 
     - name: Test
       run: bun test
       env:
-        MONGO_USERNAME: root
-        MONGO_PASSWORD: password
+        MONGO_USERNAME: ''
+        MONGO_PASSWORD: ''
         MONGO_HOST: localhost
         MONGO_RS: rs0
