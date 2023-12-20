@@ -33,12 +33,12 @@ jobs:
       run: bun lint
 
     - name: Test
-      with:
-        mongo_username:
-        mongo_password:
-        mongo_rs: rs0
-        mongo_host: localhost        
       run: bun test
+      env:
+        - MONGO_USERNAME: ''
+        - MONGO_PASSWORD: ''
+        - MONGO_HOST: localhost
+        - MONGO_RS: rs0
 
     # - name: Setup Bun
     #   run: |
