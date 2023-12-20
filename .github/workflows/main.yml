@@ -15,23 +15,23 @@ jobs:
       mongo1:
         image: mongo:6
         options: --replSet rs0 --keyFile /mongo-keyfile --bind_ip_all
-        environment:
-          - MONGO_INITDB_ROOT_USERNAME=root
-          - MONGO_INITDB_ROOT_PASSWORD=password
+        env:
+          MONGO_INITDB_ROOT_USERNAME: root
+          MONGO_INITDB_ROOT_PASSWORD: password
 
       mongo2:
         image: mongo:6
         options: --replSet rs0 --keyFile /mongo-keyfile --bind_ip_all
-        environment:
-          - MONGO_INITDB_ROOT_USERNAME=root
-          - MONGO_INITDB_ROOT_PASSWORD=password
+        env:
+          MONGO_INITDB_ROOT_USERNAME: root
+          MONGO_INITDB_ROOT_PASSWORD: password
 
       mongo3:
         image: mongo:6
         options: --replSet rs0 --keyFile /mongo-keyfile --bind_ip_all
-        environment:
-          - MONGO_INITDB_ROOT_USERNAME=root
-          - MONGO_INITDB_ROOT_PASSWORD=password
+        env:
+          MONGO_INITDB_ROOT_USERNAME: root
+          MONGO_INITDB_ROOT_PASSWORD: password
 
     steps:
     - uses: actions/checkout@v3
