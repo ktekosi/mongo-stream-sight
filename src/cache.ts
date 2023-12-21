@@ -142,12 +142,15 @@ export function insertDocument(insertEvent: InsertEvent, cache: Document[], inde
     }
 }
 
-export function updateDocument(updateEvent: UpdateEvent, cache: Document[], index: RecordIndex, options?: CacheOptions): void {
+export function updateDocument(updateEvent: UpdateEvent, cache: Document[], index: RecordIndex, options?: CacheOptions): boolean {
     const id = updateEvent.documentKey._id.toHexString();
     const sort = options?.sort;
+    // updateEvent.updateDescription.updatedFields = {age:21}
 
     if (index[id] === undefined) {
-        return;
+        // the document is not in the cache
+        // we need to check if it should get into the cache
+        return false;
     }
 
     const doc: Document = index[id];
@@ -165,6 +168,8 @@ export function updateDocument(updateEvent: UpdateEvent, cache: Document[], inde
         removeFromCache(cache, id);
         delete index[id];
     }
+
+    return true;
 }
 
 export function deleteDocument(deleteEvent: DeleteEvent, cache: Document[], index: RecordIndex): void {
@@ -269,8 +274,23 @@ export class LiveCache {
         insertDocument(insertEvent, this.cache, this.index, this.options);
     }
 
-    private updateDocument(updateEvent: UpdateEvent): void {
-        updateDocument(updateEvent, this.cache, this.index, this.options);
+    private async updateDocument(updateEvent: UpdateEvent): Promise<void> {
+        if (!updateDocument(updateEvent, this.cache, this.index, this.options)) {
+            // if document was not in the cache, then retrieve it from db and check if it should be
+            // in the updateEvent we do not have the full document, so that's why we need to retrieve it from DB
+            const doc = await this.collection.findOne(updateEvent.documentKey);
+            if (doc === null) {
+                return;
+            }
+
+            const insertEvent: InsertEvent = {
+                operationType: 'insert',
+                documentKey: updateEvent.documentKey,
+                fullDocument: doc
+            };
+
+            this.insertDocument(insertEvent);
+        }
     }
 
     private deleteDocument(deleteEvent: DeleteEvent): void {
@@ -291,7 +311,7 @@ export class LiveCache {
         }
 
         if (isUpdateEvent(changeEvent)) {
-            this.updateDocument(changeEvent);
+            void this.updateDocument(changeEvent);
             return;
         }
 

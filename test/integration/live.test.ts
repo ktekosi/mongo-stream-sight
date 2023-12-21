@@ -160,7 +160,7 @@ describe('Server Integration Tests', () => {
         expect(updatedResponse.data).toEqual(expectedDocuments);
     });
 
-    test.skip('Update Document to Match Filter Criteria and Appear in Cache', async() => {
+    test('Update Document to Match Filter Criteria and Appear in Cache', async() => {
         const COLLECTION_NAME = 'users';
         const collection = client.db(DB_NAME).collection(COLLECTION_NAME);
 
@@ -190,12 +190,14 @@ describe('Server Integration Tests', () => {
         // Update user2 to match the filter criteria
         await collection.updateOne({ _id: user2._id }, { $set: { age: 21 } }, { writeConcern });
 
+        await sleep(10);
+
         // Query again to check if the cache reflects the updated document
         const updatedResponse = await axios.post(serverUrl, request);
 
         // Check that user2 now appears in the cache
         const updatedUser2 = { ...user2, age: 21 };
-        const expectedUpdatedDocs = [user1, updatedUser2, user3].map(doc => JSON.parse(JSON.stringify(doc)));
+        const expectedUpdatedDocs = [user1, user3, updatedUser2].map(doc => JSON.parse(JSON.stringify(doc)));
         expect(updatedResponse.data).toEqual(expectedUpdatedDocs);
     });
 
