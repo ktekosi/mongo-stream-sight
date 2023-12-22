@@ -132,12 +132,31 @@ export function removeFromCache(cache: Document[], id: string): void {
 
 export function insertDocument(insertEvent: InsertEvent, cache: Document[], index: RecordIndex, options?: CacheOptions): void {
     const query = options?.query;
+    const projection = options?.projection;
     const doc = insertEvent.fullDocument;
 
     if (query === undefined || documentMatchesQuery(doc, query)) {
-        insertIntoCache(cache, doc, options?.sort);
-        index[insertEvent.documentKey._id.toHexString()] = doc;
+        const docToInsert = projection !== undefined ? applyProjection(doc, projection) : doc;
+        insertIntoCache(cache, docToInsert, options?.sort);
+        index[insertEvent.documentKey._id.toHexString()] = docToInsert;
     }
+}
+
+export function applyProjection(doc: Document, projection: Record<string, number>): WithId<Document> {
+    const projectedDoc: Partial<WithId<Document>> = {};
+
+    // Always include the _id field, if it exists
+    if (doc._id !== undefined) {
+        projectedDoc._id = doc._id;
+    }
+
+    for (const key in projection) {
+        if (projection[key] === 1) {
+            projectedDoc[key] = doc[key];
+        }
+    }
+
+    return projectedDoc as WithId<Document>;
 }
 
 export function updateDocument(updateEvent: UpdateEvent, cache: Document[], index: RecordIndex, options?: CacheOptions): boolean {
