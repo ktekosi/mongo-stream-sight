@@ -207,7 +207,7 @@ export class LiveCache {
     }
 
     public getData(): Document[] {
-        return this.cache.slice(this.options?.skip, this.options?.limit);
+        return this.cache.slice(this.options?.skip, (this.options?.skip ?? 0) + (this.options?.limit ?? this.cache.length));
     }
 
     public isReady(): boolean {

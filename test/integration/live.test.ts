@@ -83,6 +83,107 @@ describe('Server Integration Tests', () => {
         expect(updatedResponse.data).toEqual([JSON.parse(JSON.stringify(Object.assign({}, john, { age: 5 })))]);
     });
 
+    test('Update Fields in Filter with Sort and Projection', async() => {
+        const collection = client.db(DB_NAME).collection('users');
+
+        // Manually create ObjectId values and add an extra field (e.g., 'location')
+        const john = { _id: new ObjectId(), name: 'John', age: 10, location: 'CityA' };
+        const jane = { _id: new ObjectId(), name: 'Jane', age: 15, location: 'CityB' };
+
+        // Insert documents with manual _id values
+        const documents = [john, jane];
+        await collection.insertMany(documents);
+
+        // Find documents by filter with sort and projection
+        const filter = { name: 'John' };
+        const sort = { age: -1 }; // Sorting by age in descending order
+        const projection = { name: 1, age: 1 }; // Projecting name and age fields
+        const request = {
+            method: 'find',
+            params: {
+                db: DB_NAME,
+                collection: 'users',
+                query: filter,
+                projection,
+                sort
+            }
+        };
+
+        const response = await axios.post(serverUrl, request);
+
+        // Check response is correct (name and age fields should be returned)
+        expect(response.data).toEqual([{
+            _id: john._id.toHexString(),
+            name: john.name,
+            age: john.age
+        }]);
+
+        // Update fields that aren't in the filter
+        await collection.updateOne(filter, { $set: { age: 5 } }, { writeConcern });
+
+        // Check the updated values of the fields are now returned
+        const updatedResponse = await axios.post(serverUrl, request);
+
+        // Check the update has been reflected in the cache
+        expect(updatedResponse.data).toEqual([{
+            _id: john._id.toHexString(),
+            name: john.name,
+            age: 5 // Updated age
+        }]);
+    });
+
+    test('Update Fields Not in the Filter with Skip and Limit', async() => {
+        const collection = client.db(DB_NAME).collection('users');
+
+        // Manually create ObjectId values for multiple users
+        const users = [
+            { _id: new ObjectId(), name: 'John', age: 10 },
+            { _id: new ObjectId(), name: 'Jane', age: 15 },
+            { _id: new ObjectId(), name: 'Jim', age: 20 },
+            { _id: new ObjectId(), name: 'Jill', age: 25 },
+            { _id: new ObjectId(), name: 'Jack', age: 30 }
+        ];
+
+        // Insert multiple documents
+        await collection.insertMany(users);
+
+        // Find documents by filter with skip and limit
+        const filter = { name: { $in: ['John', 'Jane', 'Jim', 'Jill', 'Jack'] } };
+        const skip = 1; // Skip the first document
+        const limit = 2; // Limit to 2 documents
+        const request = {
+            method: 'find',
+            params: {
+                db: DB_NAME,
+                collection: 'users',
+                query: filter,
+                skip,
+                limit
+            }
+        };
+
+        const response = await axios.post(serverUrl, request);
+
+        // Check response is correct with the specified skip and limit
+        expect(response.data).toEqual([
+            JSON.parse(JSON.stringify(users[1])),
+            JSON.parse(JSON.stringify(users[2]))
+        ]);
+
+        // Update a field in one of the retrieved documents
+        await collection.updateOne({ _id: users[1]._id }, { $set: { age: 16 } }, { writeConcern });
+
+        // Check the updated values of the fields are now returned
+        const updatedResponse = await axios.post(serverUrl, request);
+
+        // Check the update has been reflected in the cache
+        const updatedUser = { ...users[1], age: 16 };
+        expect(updatedResponse.data).toEqual([
+            JSON.parse(JSON.stringify(updatedUser)),
+            JSON.parse(JSON.stringify(users[2]))
+        ]);
+    });
+
     test('Update Fields In the Filter', async() => {
         const COLLECTION_NAME = 'users';
         const collection = client.db(DB_NAME).collection(COLLECTION_NAME);
