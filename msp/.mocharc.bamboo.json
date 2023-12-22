@@ -1,7 +1,0 @@
-{
-  "reporter": "mocha-bamboo-reporter",
-  "require": [ "ts-node/register" ,"tsconfig-paths/register" ],
-  "file": "./mocha.config.ts",
-  "exit": true,
-  "timeout": 5000
-}
