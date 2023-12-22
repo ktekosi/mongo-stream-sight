@@ -13,8 +13,6 @@ import * as crypto from 'crypto';
 export interface CacheOptions {
     query?: Document
     projection?: Document
-    limit?: number
-    skip?: number
     sort?: Document
 }
 
@@ -206,8 +204,8 @@ export class LiveCache {
         });
     }
 
-    public getData(): Document[] {
-        return this.cache.slice(this.options?.skip, (this.options?.skip ?? 0) + (this.options?.limit ?? this.cache.length));
+    public getData(skip?: number, limit?: number): Document[] {
+        return this.cache.slice(skip, (skip ?? 0) + (limit ?? this.cache.length));
     }
 
     public isReady(): boolean {
@@ -300,7 +298,6 @@ export class LiveCache {
     private async dropCollection(dropEvent: DropEvent): Promise<void> {
         this.cache.length = 0;
         Object.keys(this.index).forEach(key => delete this.index[key]);
-
         // TODO: check performance on deleting keys
     }
 
