@@ -35,8 +35,6 @@ export async function createApi(mongoUri: string): Promise<ApiFunction[]> {
             const cacheOptions: CacheOptions = {
                 query,
                 projection,
-                skip,
-                limit,
                 sort
             };
             const liveCache: LiveCache = cacheManager.getCache(mongo, db, collection, cacheOptions);
@@ -45,7 +43,7 @@ export async function createApi(mongoUri: string): Promise<ApiFunction[]> {
                 await liveCache.waitToBeReady();
             }
 
-            return liveCache.getData();
+            return liveCache.getData(skip, limit);
         }
     };
 
