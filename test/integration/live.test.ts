@@ -614,6 +614,87 @@ describe('Server Integration Tests', () => {
         expect(updatedResponse.data).toEqual(expectedDocuments);
     });
 
+    test('Check for Newly Inserted Documents with Projection and Sorting', async() => {
+        const COLLECTION_NAME = 'users';
+        const collection = client.db(DB_NAME).collection(COLLECTION_NAME);
+
+        // Pre-existing documents with an additional field
+        const existingUser = { _id: new ObjectId(), name: 'Existing', age: 30, location: 'CityA' };
+        await collection.insertOne(existingUser);
+
+        // Find documents by filter with projection and sorting
+        const filter = { age: { $gt: 20 } };
+        const projection = { name: 1, age: 1 }; // Projecting only name and age fields
+        const sort = { age: -1 }; // Sorting by age in descending order
+        const request = {
+            method: 'find',
+            params: {
+                db: DB_NAME,
+                collection: COLLECTION_NAME,
+                query: filter,
+                projection,
+                sort
+            }
+        };
+
+        const initialResponse = await axios.post(serverUrl, request);
+        const expectedInitialDocs = [{ _id: existingUser._id.toString(), name: existingUser.name, age: existingUser.age }];
+        expect(initialResponse.data).toEqual(expectedInitialDocs);
+
+        // Insert new documents, some of which match the filter
+        const newUser1 = { _id: new ObjectId(), name: 'NewUser1', age: 25, location: 'CityB' }; // This should match
+        const newUser2 = { _id: new ObjectId(), name: 'NewUser2', age: 18, location: 'CityC' }; // This should not match
+        const newUser3 = { _id: new ObjectId(), name: 'NewUser3', age: 31, location: 'CityD' }; // This should match
+        const newDocuments = [newUser1, newUser2, newUser3];
+        await collection.insertMany(newDocuments, { writeConcern });
+
+        // Check that only the new documents matching the filter are returned
+        const updatedResponse = await axios.post(serverUrl, request);
+        const expectedDocuments = [existingUser, newUser1, newUser3].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })).sort((a, b) => b.age - a.age);
+        expect(updatedResponse.data).toEqual(expectedDocuments);
+    });
+
+    test('Check for Newly Inserted Documents with Skip and Limit', async() => {
+        const COLLECTION_NAME = 'users';
+        const collection = client.db(DB_NAME).collection(COLLECTION_NAME);
+
+        // Pre-existing documents
+        const existingUser = { _id: new ObjectId(), name: 'Existing', age: 30 };
+        await collection.insertOne(existingUser);
+
+        // Find documents by filter with skip and limit
+        const filter = { age: { $gt: 20 } };
+        const skip = 1; // Skip the first document
+        const limit = 1; // Limit to 1 document
+        const request = {
+            method: 'find',
+            params: {
+                db: DB_NAME,
+                collection: COLLECTION_NAME,
+                query: filter,
+                skip,
+                limit
+            }
+        };
+
+        const initialResponse = await axios.post(serverUrl, request);
+        // Expect no documents initially since the limit is 1 and we are skipping the existing user
+        expect(initialResponse.data).toEqual([]);
+
+        // Insert new documents, some of which match the filter
+        const newUser1 = { _id: new ObjectId(), name: 'NewUser1', age: 25 }; // This should match
+        const newUser2 = { _id: new ObjectId(), name: 'NewUser2', age: 18 }; // This should not match
+        const newUser3 = { _id: new ObjectId(), name: 'NewUser3', age: 31 }; // This should match
+        const newDocuments = [newUser1, newUser2, newUser3];
+        await collection.insertMany(newDocuments, { writeConcern });
+
+        // Check that only the new documents matching the filter are returned
+        const updatedResponse = await axios.post(serverUrl, request);
+        // Expect newUser1 to be the one returned since it's the second document matching the filter
+        const expectedDocument = [{ _id: newUser1._id.toString(), name: newUser1.name, age: newUser1.age }];
+        expect(updatedResponse.data).toEqual(expectedDocument);
+    });
+
     test('Check Cache After Deleting a Specific Document', async() => {
         const COLLECTION_NAME = 'users';
         const collection = client.db(DB_NAME).collection(COLLECTION_NAME);
