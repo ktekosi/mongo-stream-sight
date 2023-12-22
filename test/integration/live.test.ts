@@ -730,4 +730,88 @@ describe('Server Integration Tests', () => {
         const expectedDocuments = [otherUser1, otherUser2].map(doc => JSON.parse(JSON.stringify(doc)));
         expect(updatedResponse.data).toEqual(expectedDocuments);
     });
+
+    test('Check Cache After Deleting a Specific Document with Projection and Sorting', async() => {
+        const COLLECTION_NAME = 'users';
+        const collection = client.db(DB_NAME).collection(COLLECTION_NAME);
+
+        // Insert multiple documents, including the one to be deleted, with an additional field
+        const userToDelete = { _id: new ObjectId(), name: 'UserToDelete', age: 40, location: 'CityA' };
+        const otherUser1 = { _id: new ObjectId(), name: 'OtherUser1', age: 25, location: 'CityB' };
+        const otherUser2 = { _id: new ObjectId(), name: 'OtherUser2', age: 30, location: 'CityC' };
+        const documents = [userToDelete, otherUser1, otherUser2];
+        await collection.insertMany(documents);
+
+        // Perform a query with projection and sorting to ensure all documents are cached
+        const filterForCache = {};
+        const projection = { name: 1, age: 1 }; // Projecting only name and age fields
+        const sort = { age: -1 }; // Sorting by age in descending order
+        const cacheQueryRequest = {
+            method: 'find',
+            params: {
+                db: DB_NAME,
+                collection: COLLECTION_NAME,
+                query: filterForCache,
+                projection,
+                sort
+            }
+        };
+
+        const initialResponse = await axios.post(serverUrl, cacheQueryRequest);
+        const expectedInitialDocs = documents.map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })).sort((a, b) => b.age - a.age);
+        expect(initialResponse.data).toEqual(expectedInitialDocs);
+
+        // Delete the specific document
+        await collection.deleteOne({ _id: userToDelete._id });
+
+        // Query again to check if the cache has been updated correctly
+        const updatedResponse = await axios.post(serverUrl, cacheQueryRequest);
+
+        // Expect the cache to return all documents except the deleted one, with projection and sorting applied
+        const expectedDocuments = [otherUser1, otherUser2].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })).sort((a, b) => b.age - a.age);
+        expect(updatedResponse.data).toEqual(expectedDocuments);
+    });
+
+    test('Check Cache After Deleting a Specific Document with Skip, Limit, and Sorting', async() => {
+        const COLLECTION_NAME = 'users';
+        const collection = client.db(DB_NAME).collection(COLLECTION_NAME);
+
+        // Insert multiple documents, including the one to be deleted
+        const userToDelete = { _id: new ObjectId(), name: 'UserToDelete', age: 40 };
+        const otherUser1 = { _id: new ObjectId(), name: 'OtherUser1', age: 25 };
+        const otherUser2 = { _id: new ObjectId(), name: 'OtherUser2', age: 30 };
+        const documents = [userToDelete, otherUser1, otherUser2];
+        await collection.insertMany(documents);
+
+        // Perform a query with skip, limit, and sorting to ensure all documents are cached
+        const filterForCache = {};
+        const skip = 1; // Skip the first document
+        const limit = 1; // Limit to 1 document
+        const sort = { age: 1 }; // Sorting by age in ascending order
+        const cacheQueryRequest = {
+            method: 'find',
+            params: {
+                db: DB_NAME,
+                collection: COLLECTION_NAME,
+                query: filterForCache,
+                skip,
+                limit,
+                sort
+            }
+        };
+
+        const initialResponse = await axios.post(serverUrl, cacheQueryRequest);
+        // Expect to return only the second document in sorted order
+        const expectedInitialDoc = [otherUser2].map(doc => JSON.parse(JSON.stringify(doc)));
+        expect(initialResponse.data).toEqual(expectedInitialDoc);
+
+        // Delete the specific document
+        await collection.deleteOne({ _id: userToDelete._id });
+
+        // Query again to check if the cache has been updated correctly
+        const updatedResponse = await axios.post(serverUrl, cacheQueryRequest);
+
+        // Expect the cache to return the same document as before since the deleted one was not in the initial result set
+        expect(updatedResponse.data).toEqual(expectedInitialDoc);
+    });
 });
