@@ -12,7 +12,8 @@ export const argv = yargs(hideBin(process.argv))
     .option('mongo', {
         alias: 'm',
         description: 'MongoDB URI',
-        type: 'string'
+        type: 'string',
+        default: env.MONGO_URI
     })
     .option('port', {
         alias: 'p',
