@@ -50,6 +50,7 @@ jobs:
         bun test test/integration/live.test.ts
         docker stop mongo-stream-sight
       env:
+        SLEEP_WAIT_TIME: 50
         USE_EXTERNAL_SERVER: true
         MONGO_USERNAME: ''
         MONGO_PASSWORD: ''

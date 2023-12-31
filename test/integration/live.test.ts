@@ -13,6 +13,7 @@ describe('Server Integration Tests', () => {
     const MONGO_RS = Bun.env.MONGO_RS ?? 'rs0';
     const SERVER_HOSTNAME = Bun.env.SERVER_HOSTNAME ?? 'localhost';
     const USE_EXTERNAL_SERVER = (Bun.env.USE_EXTERNAL_SERVER ?? 'false') === 'true';
+    const SLEEP_WAIT_TIME = parseInt(Bun.env.SLEEP_WAIT_TIME ?? '0');
 
     const serverUrl: string = `http://${SERVER_HOSTNAME}:${LISTEN_PORT}`;
     const mongoUri: string = `mongodb://${MONGO_USERNAME}${MONGO_PASSWORD !== '' ? `:${MONGO_PASSWORD}@` : ''}${MONGO_HOST}/admin?replicaSet=${MONGO_RS}`;
@@ -74,7 +75,7 @@ describe('Server Integration Tests', () => {
             }
         };
 
-        await sleep(10);
+        await sleep(SLEEP_WAIT_TIME);
 
         const response = await axios.post(serverUrl, request);
 
@@ -84,7 +85,7 @@ describe('Server Integration Tests', () => {
         // Update fields that aren't in the filter
         await collection.updateOne(filter, { $set: { age: 5 } }, { writeConcern });
 
-        await sleep(10);
+        await sleep(SLEEP_WAIT_TIME);
 
         // Check the updated values of the fields are now returned
         const updatedResponse = await axios.post(serverUrl, request);
@@ -119,7 +120,7 @@ describe('Server Integration Tests', () => {
             }
         };
 
-        await sleep(10);
+        await sleep(SLEEP_WAIT_TIME);
 
         const response = await axios.post(serverUrl, request);
 
@@ -133,7 +134,7 @@ describe('Server Integration Tests', () => {
         // Update fields that aren't in the filter
         await collection.updateOne(filter, { $set: { age: 5 } }, { writeConcern });
 
-        await sleep(10);
+        await sleep(SLEEP_WAIT_TIME);
 
         // Check the updated values of the fields are now returned
         const updatedResponse = await axios.post(serverUrl, request);
@@ -176,7 +177,7 @@ describe('Server Integration Tests', () => {
             }
         };
 
-        await sleep(10);
+        await sleep(SLEEP_WAIT_TIME);
 
         const response = await axios.post(serverUrl, request);
 
@@ -189,7 +190,7 @@ describe('Server Integration Tests', () => {
         // Update a field in one of the retrieved documents
         await collection.updateOne({ _id: users[1]._id }, { $set: { age: 16 } }, { writeConcern });
 
-        await sleep(10);
+        await sleep(SLEEP_WAIT_TIME);
 
         // Check the updated values of the fields are now returned
         const updatedResponse = await axios.post(serverUrl, request);
@@ -224,7 +225,7 @@ describe('Server Integration Tests', () => {
             }
         };
 
-        await sleep(10);
+        await sleep(SLEEP_WAIT_TIME);
 
         // Initial query to cache the documents
         const initialResponse = await axios.post(serverUrl, request);
@@ -233,7 +234,7 @@ describe('Server Integration Tests', () => {
         // Update an in-filter field (age) in a way that it still matches the filter
         await collection.updateOne({ _id: user2._id }, { $set: { age: 27 } }, { writeConcern });
 
-        await sleep(10);
+        await sleep(SLEEP_WAIT_TIME);
 
         // Query again to check if the cache reflects the updated document
         const updatedResponse = await axios.post(serverUrl, request);
@@ -274,7 +275,7 @@ describe('Server Integration Tests', () => {
             }
         };
 
-        await sleep(10);
+        await sleep(SLEEP_WAIT_TIME);
 
         // Initial query to cache the documents with sorting and projection
         const initialResponse = await axios.post(serverUrl, request);
@@ -284,7 +285,7 @@ describe('Server Integration Tests', () => {
         // Update an in-filter field (age) in a way that it still matches the filter
         await collection.updateOne({ _id: user2._id }, { $set: { age: 27 } }, { writeConcern });
 
-        await sleep(10);
+        await sleep(SLEEP_WAIT_TIME);
 
         // Query again to check if the cache reflects the updated document with sorting and projection
         const updatedResponse = await axios.post(serverUrl, request);
@@ -325,7 +326,7 @@ describe('Server Integration Tests', () => {
             }
         };
 
-        await sleep(10);
+        await sleep(SLEEP_WAIT_TIME);
 
         // Initial query to cache the documents with skip and limit
         const initialResponse = await axios.post(serverUrl, request);
@@ -335,7 +336,7 @@ describe('Server Integration Tests', () => {
         // Update an in-filter field (age) in a way that it still matches the filter
         await collection.updateOne({ _id: user2._id }, { $set: { age: 27 } }, { writeConcern });
 
-        await sleep(10);
+        await sleep(SLEEP_WAIT_TIME);
 
         // Query again to check if the cache reflects the updated document with skip and limit
         const updatedResponse = await axios.post(serverUrl, request);
@@ -370,7 +371,7 @@ describe('Server Integration Tests', () => {
             }
         };
 
-        await sleep(10);
+        await sleep(SLEEP_WAIT_TIME);
 
         // Initial query to cache the documents
         const initialResponse = await axios.post(serverUrl, request);
@@ -379,7 +380,7 @@ describe('Server Integration Tests', () => {
         // Update a document in a way that it no longer matches the filter
         await collection.updateOne({ _id: user2._id }, { $set: { age: 18 } }, { writeConcern });
 
-        await sleep(10);
+        await sleep(SLEEP_WAIT_TIME);
 
         // Query again to check if the cache reflects the updated document
         const updatedResponse = await axios.post(serverUrl, request);
@@ -417,7 +418,7 @@ describe('Server Integration Tests', () => {
             }
         };
 
-        await sleep(10);
+        await sleep(SLEEP_WAIT_TIME);
 
         // Initial query to cache the documents with projection and sorting
         const initialResponse = await axios.post(serverUrl, request);
@@ -427,7 +428,7 @@ describe('Server Integration Tests', () => {
         // Update a document in a way that it no longer matches the filter
         await collection.updateOne({ _id: user2._id }, { $set: { age: 18 } }, { writeConcern });
 
-        await sleep(10);
+        await sleep(SLEEP_WAIT_TIME);
 
         // Query again to check if the cache reflects the updated document with projection and sorting
         const updatedResponse = await axios.post(serverUrl, request);
@@ -465,7 +466,7 @@ describe('Server Integration Tests', () => {
             }
         };
 
-        await sleep(10);
+        await sleep(SLEEP_WAIT_TIME);
 
         // Initial query to cache the documents with skip and limit
         const initialResponse = await axios.post(serverUrl, request);
@@ -475,7 +476,7 @@ describe('Server Integration Tests', () => {
         // Update a document in a way that it no longer matches the filter
         await collection.updateOne({ _id: user2._id }, { $set: { age: 18 } }, { writeConcern });
 
-        await sleep(10);
+        await sleep(SLEEP_WAIT_TIME);
 
         // Query again to check if the cache reflects the updated document with skip and limit
         const updatedResponse = await axios.post(serverUrl, request);
@@ -507,7 +508,7 @@ describe('Server Integration Tests', () => {
             }
         };
 
-        await sleep(10);
+        await sleep(SLEEP_WAIT_TIME);
 
         // Initial query to cache the documents that meet the filter criteria
         const initialResponse = await axios.post(serverUrl, request);
@@ -517,7 +518,7 @@ describe('Server Integration Tests', () => {
         // Update user2 to match the filter criteria
         await collection.updateOne({ _id: user2._id }, { $set: { age: 21 } }, { writeConcern });
 
-        await sleep(10);
+        await sleep(SLEEP_WAIT_TIME);
 
         // Query again to check if the cache reflects the updated document
         const updatedResponse = await axios.post(serverUrl, request);
@@ -554,7 +555,7 @@ describe('Server Integration Tests', () => {
             }
         };
 
-        await sleep(10);
+        await sleep(SLEEP_WAIT_TIME);
 
         // Initial query to cache the documents with projection and sorting
         const initialResponse = await axios.post(serverUrl, request);
@@ -564,7 +565,7 @@ describe('Server Integration Tests', () => {
         // Update user2 to match the filter criteria
         await collection.updateOne({ _id: user2._id }, { $set: { age: 21 } }, { writeConcern });
 
-        await sleep(10); // Wait to ensure the cache is updated
+        await sleep(SLEEP_WAIT_TIME); // Wait to ensure the cache is updated
 
         // Query again to check if the cache reflects the updated document with projection and sorting
         const updatedResponse = await axios.post(serverUrl, request);
@@ -604,7 +605,7 @@ describe('Server Integration Tests', () => {
             }
         };
 
-        await sleep(10);
+        await sleep(SLEEP_WAIT_TIME);
 
         // Initial query to cache the documents with skip, limit, and sorting
         const initialResponse = await axios.post(serverUrl, request);
@@ -614,7 +615,7 @@ describe('Server Integration Tests', () => {
         // Update user2 to match the filter criteria
         await collection.updateOne({ _id: user2._id }, { $set: { age: 21 } }, { writeConcern });
 
-        await sleep(10); // Wait to ensure the cache is updated
+        await sleep(SLEEP_WAIT_TIME); // Wait to ensure the cache is updated
 
         // Query again to check if the cache reflects the updated document with skip, limit, and sorting
         const updatedResponse = await axios.post(serverUrl, request);
@@ -644,7 +645,7 @@ describe('Server Integration Tests', () => {
             }
         };
 
-        await sleep(10);
+        await sleep(SLEEP_WAIT_TIME);
 
         const initialResponse = await axios.post(serverUrl, request);
         expect(initialResponse.data).toEqual([JSON.parse(JSON.stringify(existingUser))]);
@@ -656,7 +657,7 @@ describe('Server Integration Tests', () => {
         const newDocuments = [newUser1, newUser2, newUser3];
         await collection.insertMany(newDocuments, { writeConcern });
 
-        await sleep(10);
+        await sleep(SLEEP_WAIT_TIME);
 
         // Check that only the new documents matching the filter are returned
         const updatedResponse = await axios.post(serverUrl, request);
@@ -687,7 +688,7 @@ describe('Server Integration Tests', () => {
             }
         };
 
-        await sleep(10);
+        await sleep(SLEEP_WAIT_TIME);
 
         const initialResponse = await axios.post(serverUrl, request);
         const expectedInitialDocs = [{ _id: existingUser._id.toString(), name: existingUser.name, age: existingUser.age }];
@@ -700,7 +701,7 @@ describe('Server Integration Tests', () => {
         const newDocuments = [newUser1, newUser2, newUser3];
         await collection.insertMany(newDocuments, { writeConcern });
 
-        await sleep(10);
+        await sleep(SLEEP_WAIT_TIME);
 
         // Check that only the new documents matching the filter are returned
         const updatedResponse = await axios.post(serverUrl, request);
@@ -731,7 +732,7 @@ describe('Server Integration Tests', () => {
             }
         };
 
-        await sleep(10);
+        await sleep(SLEEP_WAIT_TIME);
 
         const initialResponse = await axios.post(serverUrl, request);
         // Expect no documents initially since the limit is 1 and we are skipping the existing user
@@ -744,7 +745,7 @@ describe('Server Integration Tests', () => {
         const newDocuments = [newUser1, newUser2, newUser3];
         await collection.insertMany(newDocuments, { writeConcern });
 
-        await sleep(10);
+        await sleep(SLEEP_WAIT_TIME);
 
         // Check that only the new documents matching the filter are returned
         const updatedResponse = await axios.post(serverUrl, request);
@@ -775,7 +776,7 @@ describe('Server Integration Tests', () => {
             }
         };
 
-        await sleep(10);
+        await sleep(SLEEP_WAIT_TIME);
 
         const initialResponse = await axios.post(serverUrl, cacheQueryRequest);
         expect(initialResponse.data).toEqual(documents.map(doc => JSON.parse(JSON.stringify(doc))));
@@ -783,7 +784,7 @@ describe('Server Integration Tests', () => {
         // Delete the specific document
         await collection.deleteOne({ _id: userToDelete._id }, { writeConcern });
 
-        await sleep(10);
+        await sleep(SLEEP_WAIT_TIME);
 
         // Query again to check if the cache has been updated correctly
         const updatedResponse = await axios.post(serverUrl, cacheQueryRequest);
@@ -819,7 +820,7 @@ describe('Server Integration Tests', () => {
             }
         };
 
-        await sleep(10);
+        await sleep(SLEEP_WAIT_TIME);
 
         const initialResponse = await axios.post(serverUrl, cacheQueryRequest);
         const expectedInitialDocs = documents.map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })).sort((a, b) => b.age - a.age);
@@ -828,7 +829,7 @@ describe('Server Integration Tests', () => {
         // Delete the specific document
         await collection.deleteOne({ _id: userToDelete._id }, { writeConcern });
 
-        await sleep(10);
+        await sleep(SLEEP_WAIT_TIME);
 
         // Query again to check if the cache has been updated correctly
         const updatedResponse = await axios.post(serverUrl, cacheQueryRequest);
@@ -866,7 +867,7 @@ describe('Server Integration Tests', () => {
             }
         };
 
-        await sleep(10);
+        await sleep(SLEEP_WAIT_TIME);
 
         const initialResponse = await axios.post(serverUrl, cacheQueryRequest);
         // Expect to return only the second document in sorted order
@@ -876,7 +877,7 @@ describe('Server Integration Tests', () => {
         // Delete the specific document
         await collection.deleteOne({ _id: userToDelete._id }, { writeConcern });
 
-        await sleep(10);
+        await sleep(SLEEP_WAIT_TIME);
 
         // Query again to check if the cache has been updated correctly
         const updatedResponse = await axios.post(serverUrl, cacheQueryRequest);
