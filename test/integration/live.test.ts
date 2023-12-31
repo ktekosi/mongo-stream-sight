@@ -6,13 +6,15 @@ import { sleep, type Subprocess } from 'bun';
 import waitPort from 'wait-port';
 
 describe('Server Integration Tests', () => {
-    const LISTEN_PORT = 8000;
+    const LISTEN_PORT = parseInt(Bun.env.LISTEN_PORT ?? '8000');
     const MONGO_USERNAME = Bun.env.MONGO_USERNAME ?? 'root';
     const MONGO_PASSWORD = Bun.env.MONGO_PASSWORD ?? 'password';
     const MONGO_HOST = Bun.env.MONGO_HOST ?? 'mongo1,mongo2,mongo3';
     const MONGO_RS = Bun.env.MONGO_RS ?? 'rs0';
+    const SERVER_HOSTNAME = Bun.env.SERVER_HOSTNAME ?? 'localhost';
+    const USE_EXTERNAL_SERVER = (Bun.env.USE_EXTERNAL_SERVER ?? 'false') === 'true';
 
-    const serverUrl: string = `http://localhost:${LISTEN_PORT}`;
+    const serverUrl: string = `http://${SERVER_HOSTNAME}:${LISTEN_PORT}`;
     const mongoUri: string = `mongodb://${MONGO_USERNAME}${MONGO_PASSWORD !== '' ? `:${MONGO_PASSWORD}@` : ''}${MONGO_HOST}/admin?replicaSet=${MONGO_RS}`;
     let client: MongoClient;
     let server: MongoStreamSightServer;
@@ -25,8 +27,11 @@ describe('Server Integration Tests', () => {
         client = new MongoClient(mongoUri);
         await client.connect();
         await client.db(DB_NAME).dropDatabase();
-        // Start the Live Cache Server
-        server = await startApp(LISTEN_PORT, mongoUri);
+
+        if (!USE_EXTERNAL_SERVER) {
+            // Start the Live Cache Server
+            server = await startApp(LISTEN_PORT, mongoUri);
+        }
     });
 
     afterAll(async() => {
@@ -34,8 +39,9 @@ describe('Server Integration Tests', () => {
         await client.close(true);
 
         // Shutdown the server
-        // console.log('Shutting down server');
-        server.shutdown();
+        if (!USE_EXTERNAL_SERVER) {
+            server.shutdown();
+        }
     });
 
     beforeEach(async() => {

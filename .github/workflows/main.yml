@@ -39,3 +39,17 @@ jobs:
         MONGO_PASSWORD: ''
         MONGO_HOST: localhost
         MONGO_RS: rs0
+    
+    - name: Build Docker Image
+      run: bun run build
+
+    - name: Test Docker Image
+      run: |
+        docker run --network host -e MONGO_URI=mongodb://localhost/admin?replicaSet=rs0 -d mongo-stream-sight
+        bun test test/integration/live.test.ts
+      env:
+        USE_EXTERNAL_SERVER: true
+        MONGO_USERNAME: ''
+        MONGO_PASSWORD: ''
+        MONGO_HOST: localhost
+        MONGO_RS: rs0

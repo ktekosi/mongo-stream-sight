@@ -20,10 +20,22 @@ let cacheManager: CacheManager;
 
 export async function createApi(mongoUri: string): Promise<ApiFunction[]> {
     mongo = new MongoClient(mongoUri, {
-        socketTimeoutMS: 60000
+        socketTimeoutMS: parseInt(Bun.env.MONGO_SOCKET_TIMEOUT_MS ?? '60000'),
+        connectTimeoutMS: parseInt(Bun.env.MONGO_CONNECT_TIMEOUT_MS ?? '2000'),
+        serverSelectionTimeoutMS: parseInt(Bun.env.MONGO_SERVER_SELECTION_TIMEOUT_MS ?? '2000')
     });
 
-    await mongo.connect();
+    try {
+        await mongo.connect();
+    } catch (e: unknown) {
+        if (e instanceof Error) {
+            console.info(`[ERROR] Failed to connect to MongoDB: ${mongoUri}`);
+            console.error('[ERROR]', e.message);
+        } else {
+            console.error(e);
+        }
+        process.exit(1);
+    }
 
     cacheManager = new CacheManager();
 
