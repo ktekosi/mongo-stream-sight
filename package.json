@@ -3,7 +3,8 @@
     "lint": "bun run eslint:run",
     "eslint:run": "bun x eslint . --ext .ts",
     "mongo": "docker run -it --network $(basename $(pwd))_mongo-cluster mongo:6 mongosh mongodb://root:password@mongo1,mongo2,mongo3/admin?replicaSet=rs0",
-    "start:test": "bun src/index.ts -m mongodb://root:password@mongo1,mongo2,mongo3/admin?replicaSet=rs0"
+    "start:test": "bun src/index.ts -m mongodb://root:password@mongo1,mongo2,mongo3/admin?replicaSet=rs0",
+    "build": "docker build -t mongo-stream-sight ."
   },
   "dependencies": {
     "@types/yargs": "^17.0.26",
