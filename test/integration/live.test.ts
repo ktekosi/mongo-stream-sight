@@ -783,6 +783,8 @@ describe('Server Integration Tests', () => {
         // Delete the specific document
         await collection.deleteOne({ _id: userToDelete._id });
 
+        await sleep(10);
+
         // Query again to check if the cache has been updated correctly
         const updatedResponse = await axios.post(serverUrl, cacheQueryRequest);
 
@@ -825,6 +827,8 @@ describe('Server Integration Tests', () => {
 
         // Delete the specific document
         await collection.deleteOne({ _id: userToDelete._id });
+
+        await sleep(10);
 
         // Query again to check if the cache has been updated correctly
         const updatedResponse = await axios.post(serverUrl, cacheQueryRequest);
@@ -871,6 +875,8 @@ describe('Server Integration Tests', () => {
 
         // Delete the specific document
         await collection.deleteOne({ _id: userToDelete._id });
+
+        await sleep(10);
 
         // Query again to check if the cache has been updated correctly
         const updatedResponse = await axios.post(serverUrl, cacheQueryRequest);
