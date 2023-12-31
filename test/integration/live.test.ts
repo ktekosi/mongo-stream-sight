@@ -61,7 +61,7 @@ describe('Server Integration Tests', () => {
 
         // Insert documents with manual _id values
         const documents = [john, jane];
-        await collection.insertMany(documents);
+        await collection.insertMany(documents, { writeConcern });
 
         // Find documents by filter
         const filter = { name: 'John' };
@@ -102,7 +102,7 @@ describe('Server Integration Tests', () => {
 
         // Insert documents with manual _id values
         const documents = [john, jane];
-        await collection.insertMany(documents);
+        await collection.insertMany(documents, { writeConcern });
 
         // Find documents by filter with sort and projection
         const filter = { name: 'John' };
@@ -211,7 +211,7 @@ describe('Server Integration Tests', () => {
         const user2 = { _id: new ObjectId(), name: 'User2', age: 25 };
         const user3 = { _id: new ObjectId(), name: 'User3', age: 30 };
         const documents = [user1, user2, user3];
-        await collection.insertMany(documents);
+        await collection.insertMany(documents, { writeConcern });
 
         // Filter that includes documents based on age
         const filter = { age: { $gt: 18 } };
@@ -257,7 +257,7 @@ describe('Server Integration Tests', () => {
         const user4 = { _id: new ObjectId(), name: 'User4', age: 15, location: 'CityD' }; // Does not meet filter
         const user5 = { _id: new ObjectId(), name: 'User5', age: 16, location: 'CityE' }; // Does not meet filter
         const documents = [user1, user2, user3, user4, user5];
-        await collection.insertMany(documents);
+        await collection.insertMany(documents, { writeConcern });
 
         // Filter that includes documents based on age
         const filter = { age: { $gt: 18 } };
@@ -308,7 +308,7 @@ describe('Server Integration Tests', () => {
         const user4 = { _id: new ObjectId(), name: 'User4', age: 15 }; // Does not meet filter
         const user5 = { _id: new ObjectId(), name: 'User5', age: 16 }; // Does not meet filter
         const documents = [user1, user2, user3, user4, user5];
-        await collection.insertMany(documents);
+        await collection.insertMany(documents, { writeConcern });
 
         // Filter that includes documents based on age
         const filter = { age: { $gt: 18 } };
@@ -357,7 +357,7 @@ describe('Server Integration Tests', () => {
         const user2 = { _id: new ObjectId(), name: 'User2', age: 25 };
         const user3 = { _id: new ObjectId(), name: 'User3', age: 30 };
         const documents = [user1, user2, user3];
-        await collection.insertMany(documents);
+        await collection.insertMany(documents, { writeConcern });
 
         // Filter that includes documents based on age
         const filter = { age: { $gt: 18 } };
@@ -400,7 +400,7 @@ describe('Server Integration Tests', () => {
         const user4 = { _id: new ObjectId(), name: 'User4', age: 15, location: 'CityD' }; // Does not meet filter
         const user5 = { _id: new ObjectId(), name: 'User5', age: 16, location: 'CityE' }; // Does not meet filter
         const documents = [user1, user2, user3, user4, user5];
-        await collection.insertMany(documents);
+        await collection.insertMany(documents, { writeConcern });
 
         // Filter that includes documents based on age
         const filter = { age: { $gt: 18 } };
@@ -448,7 +448,7 @@ describe('Server Integration Tests', () => {
         const user4 = { _id: new ObjectId(), name: 'User4', age: 15 }; // Does not meet filter
         const user5 = { _id: new ObjectId(), name: 'User5', age: 16 }; // Does not meet filter
         const documents = [user1, user2, user3, user4, user5];
-        await collection.insertMany(documents);
+        await collection.insertMany(documents, { writeConcern });
 
         // Filter that includes documents based on age
         const filter = { age: { $gt: 18 } };
@@ -494,7 +494,7 @@ describe('Server Integration Tests', () => {
         const user2 = { _id: new ObjectId(), name: 'User2', age: 15 }; // Initially does not meet the filter criteria
         const user3 = { _id: new ObjectId(), name: 'User3', age: 30 };
         const documents = [user1, user2, user3];
-        await collection.insertMany(documents);
+        await collection.insertMany(documents, { writeConcern });
 
         // Filter that includes documents based on age
         const filter = { age: { $gt: 18 } };
@@ -537,7 +537,7 @@ describe('Server Integration Tests', () => {
         const user2 = { _id: new ObjectId(), name: 'User2', age: 15, location: 'CityB' }; // Initially does not meet the filter criteria
         const user3 = { _id: new ObjectId(), name: 'User3', age: 30, location: 'CityC' };
         const documents = [user1, user2, user3];
-        await collection.insertMany(documents);
+        await collection.insertMany(documents, { writeConcern });
 
         // Filter that includes documents based on age, with projection and sorting
         const filter = { age: { $gt: 18 } };
@@ -585,7 +585,7 @@ describe('Server Integration Tests', () => {
         const user3 = { _id: new ObjectId(), name: 'User3', age: 30 };
         const user4 = { _id: new ObjectId(), name: 'User4', age: 35 }; // Additional user for skip and limit testing
         const documents = [user1, user2, user3, user4];
-        await collection.insertMany(documents);
+        await collection.insertMany(documents, { writeConcern });
 
         // Filter that includes documents based on age, with skip, limit, and sorting
         const filter = { age: { $gt: 18 } };
@@ -631,7 +631,7 @@ describe('Server Integration Tests', () => {
 
         // Pre-existing documents
         const existingUser = { _id: new ObjectId(), name: 'Existing', age: 30 };
-        await collection.insertOne(existingUser);
+        await collection.insertOne(existingUser, { writeConcern });
 
         // Find documents by filter
         const filter = { age: { $gt: 20 } };
@@ -670,7 +670,7 @@ describe('Server Integration Tests', () => {
 
         // Pre-existing documents with an additional field
         const existingUser = { _id: new ObjectId(), name: 'Existing', age: 30, location: 'CityA' };
-        await collection.insertOne(existingUser);
+        await collection.insertOne(existingUser, { writeConcern });
 
         // Find documents by filter with projection and sorting
         const filter = { age: { $gt: 20 } };
@@ -714,7 +714,7 @@ describe('Server Integration Tests', () => {
 
         // Pre-existing documents
         const existingUser = { _id: new ObjectId(), name: 'Existing', age: 30 };
-        await collection.insertOne(existingUser);
+        await collection.insertOne(existingUser, { writeConcern });
 
         // Find documents by filter with skip and limit
         const filter = { age: { $gt: 20 } };
@@ -762,7 +762,7 @@ describe('Server Integration Tests', () => {
         const otherUser1 = { _id: new ObjectId(), name: 'OtherUser1', age: 25 };
         const otherUser2 = { _id: new ObjectId(), name: 'OtherUser2', age: 30 };
         const documents = [userToDelete, otherUser1, otherUser2];
-        await collection.insertMany(documents);
+        await collection.insertMany(documents, { writeConcern });
 
         // Perform a query to ensure all documents are cached
         const filterForCache = {};
@@ -781,7 +781,7 @@ describe('Server Integration Tests', () => {
         expect(initialResponse.data).toEqual(documents.map(doc => JSON.parse(JSON.stringify(doc))));
 
         // Delete the specific document
-        await collection.deleteOne({ _id: userToDelete._id });
+        await collection.deleteOne({ _id: userToDelete._id }, { writeConcern });
 
         await sleep(10);
 
@@ -802,7 +802,7 @@ describe('Server Integration Tests', () => {
         const otherUser1 = { _id: new ObjectId(), name: 'OtherUser1', age: 25, location: 'CityB' };
         const otherUser2 = { _id: new ObjectId(), name: 'OtherUser2', age: 30, location: 'CityC' };
         const documents = [userToDelete, otherUser1, otherUser2];
-        await collection.insertMany(documents);
+        await collection.insertMany(documents, { writeConcern });
 
         // Perform a query with projection and sorting to ensure all documents are cached
         const filterForCache = {};
@@ -826,7 +826,7 @@ describe('Server Integration Tests', () => {
         expect(initialResponse.data).toEqual(expectedInitialDocs);
 
         // Delete the specific document
-        await collection.deleteOne({ _id: userToDelete._id });
+        await collection.deleteOne({ _id: userToDelete._id }, { writeConcern });
 
         await sleep(10);
 
@@ -847,7 +847,7 @@ describe('Server Integration Tests', () => {
         const otherUser1 = { _id: new ObjectId(), name: 'OtherUser1', age: 25 };
         const otherUser2 = { _id: new ObjectId(), name: 'OtherUser2', age: 30 };
         const documents = [userToDelete, otherUser1, otherUser2];
-        await collection.insertMany(documents);
+        await collection.insertMany(documents, { writeConcern });
 
         // Perform a query with skip, limit, and sorting to ensure all documents are cached
         const filterForCache = {};
@@ -874,7 +874,7 @@ describe('Server Integration Tests', () => {
         expect(initialResponse.data).toEqual(expectedInitialDoc);
 
         // Delete the specific document
-        await collection.deleteOne({ _id: userToDelete._id });
+        await collection.deleteOne({ _id: userToDelete._id }, { writeConcern });
 
         await sleep(10);
 
