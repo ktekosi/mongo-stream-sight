@@ -46,7 +46,7 @@ jobs:
     - name: Test Docker Image
       run: |
         docker run --network host --rm --name mongo-stream-sight -e MONGO_URI=mongodb://localhost/admin?replicaSet=rs0 -d mongo-stream-sight
-        slepp 2
+        sleep 2
         bun test test/integration/live.test.ts
         docker stop mongo-stream-sight
       env:
