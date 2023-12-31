@@ -74,6 +74,8 @@ describe('Server Integration Tests', () => {
             }
         };
 
+        await sleep(10);
+
         const response = await axios.post(serverUrl, request);
 
         // Check response is correct
@@ -81,6 +83,8 @@ describe('Server Integration Tests', () => {
 
         // Update fields that aren't in the filter
         await collection.updateOne(filter, { $set: { age: 5 } }, { writeConcern });
+
+        await sleep(10);
 
         // Check the updated values of the fields are now returned
         const updatedResponse = await axios.post(serverUrl, request);
@@ -115,6 +119,8 @@ describe('Server Integration Tests', () => {
             }
         };
 
+        await sleep(10);
+
         const response = await axios.post(serverUrl, request);
 
         // Check response is correct (name and age fields should be returned)
@@ -126,6 +132,8 @@ describe('Server Integration Tests', () => {
 
         // Update fields that aren't in the filter
         await collection.updateOne(filter, { $set: { age: 5 } }, { writeConcern });
+
+        await sleep(10);
 
         // Check the updated values of the fields are now returned
         const updatedResponse = await axios.post(serverUrl, request);
@@ -168,6 +176,8 @@ describe('Server Integration Tests', () => {
             }
         };
 
+        await sleep(10);
+
         const response = await axios.post(serverUrl, request);
 
         // Check response is correct with the specified skip and limit
@@ -178,6 +188,8 @@ describe('Server Integration Tests', () => {
 
         // Update a field in one of the retrieved documents
         await collection.updateOne({ _id: users[1]._id }, { $set: { age: 16 } }, { writeConcern });
+
+        await sleep(10);
 
         // Check the updated values of the fields are now returned
         const updatedResponse = await axios.post(serverUrl, request);
@@ -212,12 +224,16 @@ describe('Server Integration Tests', () => {
             }
         };
 
+        await sleep(10);
+
         // Initial query to cache the documents
         const initialResponse = await axios.post(serverUrl, request);
         expect(initialResponse.data).toEqual(documents.map(doc => JSON.parse(JSON.stringify(doc))));
 
         // Update an in-filter field (age) in a way that it still matches the filter
         await collection.updateOne({ _id: user2._id }, { $set: { age: 27 } }, { writeConcern });
+
+        await sleep(10);
 
         // Query again to check if the cache reflects the updated document
         const updatedResponse = await axios.post(serverUrl, request);
@@ -258,6 +274,8 @@ describe('Server Integration Tests', () => {
             }
         };
 
+        await sleep(10);
+
         // Initial query to cache the documents with sorting and projection
         const initialResponse = await axios.post(serverUrl, request);
         const expectedInitialDocs = [user1, user2, user3].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })).sort((a, b) => a.age - b.age);
@@ -265,6 +283,8 @@ describe('Server Integration Tests', () => {
 
         // Update an in-filter field (age) in a way that it still matches the filter
         await collection.updateOne({ _id: user2._id }, { $set: { age: 27 } }, { writeConcern });
+
+        await sleep(10);
 
         // Query again to check if the cache reflects the updated document with sorting and projection
         const updatedResponse = await axios.post(serverUrl, request);
@@ -305,6 +325,8 @@ describe('Server Integration Tests', () => {
             }
         };
 
+        await sleep(10);
+
         // Initial query to cache the documents with skip and limit
         const initialResponse = await axios.post(serverUrl, request);
         const expectedInitialDocs = [user2, user3].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })); // User1 is skipped
@@ -312,6 +334,8 @@ describe('Server Integration Tests', () => {
 
         // Update an in-filter field (age) in a way that it still matches the filter
         await collection.updateOne({ _id: user2._id }, { $set: { age: 27 } }, { writeConcern });
+
+        await sleep(10);
 
         // Query again to check if the cache reflects the updated document with skip and limit
         const updatedResponse = await axios.post(serverUrl, request);
@@ -346,12 +370,16 @@ describe('Server Integration Tests', () => {
             }
         };
 
+        await sleep(10);
+
         // Initial query to cache the documents
         const initialResponse = await axios.post(serverUrl, request);
         expect(initialResponse.data).toEqual(documents.map(doc => JSON.parse(JSON.stringify(doc))));
 
         // Update a document in a way that it no longer matches the filter
         await collection.updateOne({ _id: user2._id }, { $set: { age: 18 } }, { writeConcern });
+
+        await sleep(10);
 
         // Query again to check if the cache reflects the updated document
         const updatedResponse = await axios.post(serverUrl, request);
@@ -389,6 +417,8 @@ describe('Server Integration Tests', () => {
             }
         };
 
+        await sleep(10);
+
         // Initial query to cache the documents with projection and sorting
         const initialResponse = await axios.post(serverUrl, request);
         const expectedInitialDocs = [user1, user2, user3].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })).sort((a, b) => a.age - b.age);
@@ -396,6 +426,8 @@ describe('Server Integration Tests', () => {
 
         // Update a document in a way that it no longer matches the filter
         await collection.updateOne({ _id: user2._id }, { $set: { age: 18 } }, { writeConcern });
+
+        await sleep(10);
 
         // Query again to check if the cache reflects the updated document with projection and sorting
         const updatedResponse = await axios.post(serverUrl, request);
@@ -433,6 +465,8 @@ describe('Server Integration Tests', () => {
             }
         };
 
+        await sleep(10);
+
         // Initial query to cache the documents with skip and limit
         const initialResponse = await axios.post(serverUrl, request);
         const expectedInitialDocs = [user2, user3].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })); // User1 is skipped
@@ -440,6 +474,8 @@ describe('Server Integration Tests', () => {
 
         // Update a document in a way that it no longer matches the filter
         await collection.updateOne({ _id: user2._id }, { $set: { age: 18 } }, { writeConcern });
+
+        await sleep(10);
 
         // Query again to check if the cache reflects the updated document with skip and limit
         const updatedResponse = await axios.post(serverUrl, request);
@@ -470,6 +506,8 @@ describe('Server Integration Tests', () => {
                 query: filter
             }
         };
+
+        await sleep(10);
 
         // Initial query to cache the documents that meet the filter criteria
         const initialResponse = await axios.post(serverUrl, request);
@@ -515,6 +553,8 @@ describe('Server Integration Tests', () => {
                 sort
             }
         };
+
+        await sleep(10);
 
         // Initial query to cache the documents with projection and sorting
         const initialResponse = await axios.post(serverUrl, request);
@@ -564,6 +604,8 @@ describe('Server Integration Tests', () => {
             }
         };
 
+        await sleep(10);
+
         // Initial query to cache the documents with skip, limit, and sorting
         const initialResponse = await axios.post(serverUrl, request);
         const expectedInitialDocs = [user3, user1].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })); // User4 and User3 are included
@@ -602,10 +644,10 @@ describe('Server Integration Tests', () => {
             }
         };
 
+        await sleep(10);
+
         const initialResponse = await axios.post(serverUrl, request);
         expect(initialResponse.data).toEqual([JSON.parse(JSON.stringify(existingUser))]);
-
-        // await sleep(1000);
 
         // Insert new documents, some of which match the filter
         const newUser1 = { _id: new ObjectId(), name: 'NewUser1', age: 25 }; // This should match
@@ -613,6 +655,8 @@ describe('Server Integration Tests', () => {
         const newUser3 = { _id: new ObjectId(), name: 'NewUser3', age: 30 }; // This should match
         const newDocuments = [newUser1, newUser2, newUser3];
         await collection.insertMany(newDocuments, { writeConcern });
+
+        await sleep(10);
 
         // Check that only the new documents matching the filter are returned
         const updatedResponse = await axios.post(serverUrl, request);
@@ -643,6 +687,8 @@ describe('Server Integration Tests', () => {
             }
         };
 
+        await sleep(10);
+
         const initialResponse = await axios.post(serverUrl, request);
         const expectedInitialDocs = [{ _id: existingUser._id.toString(), name: existingUser.name, age: existingUser.age }];
         expect(initialResponse.data).toEqual(expectedInitialDocs);
@@ -653,6 +699,8 @@ describe('Server Integration Tests', () => {
         const newUser3 = { _id: new ObjectId(), name: 'NewUser3', age: 31, location: 'CityD' }; // This should match
         const newDocuments = [newUser1, newUser2, newUser3];
         await collection.insertMany(newDocuments, { writeConcern });
+
+        await sleep(10);
 
         // Check that only the new documents matching the filter are returned
         const updatedResponse = await axios.post(serverUrl, request);
@@ -683,6 +731,8 @@ describe('Server Integration Tests', () => {
             }
         };
 
+        await sleep(10);
+
         const initialResponse = await axios.post(serverUrl, request);
         // Expect no documents initially since the limit is 1 and we are skipping the existing user
         expect(initialResponse.data).toEqual([]);
@@ -693,6 +743,8 @@ describe('Server Integration Tests', () => {
         const newUser3 = { _id: new ObjectId(), name: 'NewUser3', age: 31 }; // This should match
         const newDocuments = [newUser1, newUser2, newUser3];
         await collection.insertMany(newDocuments, { writeConcern });
+
+        await sleep(10);
 
         // Check that only the new documents matching the filter are returned
         const updatedResponse = await axios.post(serverUrl, request);
@@ -722,6 +774,8 @@ describe('Server Integration Tests', () => {
                 query: filterForCache
             }
         };
+
+        await sleep(10);
 
         const initialResponse = await axios.post(serverUrl, cacheQueryRequest);
         expect(initialResponse.data).toEqual(documents.map(doc => JSON.parse(JSON.stringify(doc))));
@@ -762,6 +816,8 @@ describe('Server Integration Tests', () => {
                 sort
             }
         };
+
+        await sleep(10);
 
         const initialResponse = await axios.post(serverUrl, cacheQueryRequest);
         const expectedInitialDocs = documents.map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })).sort((a, b) => b.age - a.age);
@@ -805,6 +861,8 @@ describe('Server Integration Tests', () => {
                 sort
             }
         };
+
+        await sleep(10);
 
         const initialResponse = await axios.post(serverUrl, cacheQueryRequest);
         // Expect to return only the second document in sorted order
