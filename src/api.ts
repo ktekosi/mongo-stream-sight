@@ -10,7 +10,8 @@ const FindParamsSchema = z.object({
     projection: z.record(z.unknown()).optional(),
     skip: z.number().optional(),
     limit: z.number().optional(),
-    sort: z.record(z.unknown()).optional()
+    sort: z.record(z.unknown()).optional(),
+    ttl: z.number().optional()
 });
 
 export type FindParams = z.infer<typeof FindParamsSchema>;
@@ -43,11 +44,12 @@ export async function createApi(mongoUri: string): Promise<ApiFunction[]> {
         name: 'find',
         params: FindParamsSchema,
         return: z.array(z.any()),
-        func: async({ db, collection, query, projection, skip, limit, sort }: FindParams): Promise<Document[]> => {
+        func: async({ db, collection, query, projection, skip, limit, sort, ttl }: FindParams): Promise<Document[]> => {
             const cacheOptions: CacheOptions = {
                 query,
                 projection,
-                sort
+                sort,
+                ttl: ttl ?? -1
             };
             const liveCache: LiveCache = cacheManager.getCache(mongo, db, collection, cacheOptions);
 

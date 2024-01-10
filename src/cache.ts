@@ -14,6 +14,7 @@ export interface CacheOptions {
     query?: Document
     projection?: Document
     sort?: Document
+    ttl: number
 }
 
 interface InsertEvent {
@@ -212,6 +213,7 @@ export class LiveCache {
     private changeStream: ChangeStream;
     private closing: boolean = false;
     private collection: Collection;
+    private lastAccessed: Date;
 
     constructor(private readonly mongo: MongoClient, private readonly dbName: string, private readonly collectionName: string, private readonly options?: CacheOptions) {
         this.collection = mongo.db(dbName).collection(collectionName);
@@ -221,6 +223,16 @@ export class LiveCache {
         this.readyPromise = new Promise((resolve, reject) => {
             void this.runQuery(resolve, reject);
         });
+
+        this.lastAccessed = new Date();
+    }
+
+    public getLastAccessed(): Date {
+        return this.lastAccessed;
+    }
+
+    public updateLastAccessed(): void {
+        this.lastAccessed = new Date();
     }
 
     public getData(skip?: number, limit?: number): Document[] {
