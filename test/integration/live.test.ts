@@ -5,6 +5,24 @@ import { type MongoStreamSightServer, startApp } from '../../src/app.ts';
 import { sleep, type Subprocess } from 'bun';
 import waitPort from 'wait-port';
 
+type OperationFunction<T> = () => Promise<T>;
+type OperationChecker<T> = (value: T) => boolean;
+
+async function retryOperation<T>(op: OperationFunction<T>, check: OperationChecker<T>, retries: number, sleepTime: number): Promise<void> {
+    let result: T;
+
+    for (let i = 0; i < retries; i++) {
+        console.log(`Retry ${i + 1} of ${retries}`);
+        result = await op();
+
+        if (check(result)) {
+            return;
+        }
+
+        await sleep(sleepTime);
+    }
+}
+
 describe('Server Integration Tests', () => {
     const LISTEN_PORT = parseInt(Bun.env.LISTEN_PORT ?? '8000');
     const MONGO_USERNAME = Bun.env.MONGO_USERNAME ?? 'root';
@@ -13,7 +31,8 @@ describe('Server Integration Tests', () => {
     const MONGO_RS = Bun.env.MONGO_RS ?? 'rs0';
     const SERVER_HOSTNAME = Bun.env.SERVER_HOSTNAME ?? 'localhost';
     const USE_EXTERNAL_SERVER = (Bun.env.USE_EXTERNAL_SERVER ?? 'false') === 'true';
-    const SLEEP_WAIT_TIME = parseInt(Bun.env.SLEEP_WAIT_TIME ?? '0');
+    const SLEEP_WAIT_TIME = parseInt(Bun.env.SLEEP_WAIT_TIME ?? '50');
+    const RETRY_COUNT = parseInt(Bun.env.RETRY_COUNT ?? '10');
 
     const serverUrl: string = `http://${SERVER_HOSTNAME}:${LISTEN_PORT}`;
     const mongoUri: string = `mongodb://${MONGO_USERNAME}${MONGO_PASSWORD !== '' ? `:${MONGO_PASSWORD}@` : ''}${MONGO_HOST}/admin?replicaSet=${MONGO_RS}`;
@@ -75,7 +94,9 @@ describe('Server Integration Tests', () => {
             }
         };
 
-        await sleep(SLEEP_WAIT_TIME);
+        await retryOperation(async() => await axios.post(serverUrl, request),
+            response => JSON.stringify(response.data) === JSON.stringify([john]),
+            RETRY_COUNT, SLEEP_WAIT_TIME);
 
         const response = await axios.post(serverUrl, request);
 
@@ -85,7 +106,9 @@ describe('Server Integration Tests', () => {
         // Update fields that aren't in the filter
         await collection.updateOne(filter, { $set: { age: 5 } }, { writeConcern });
 
-        await sleep(SLEEP_WAIT_TIME);
+        await retryOperation(async() => await axios.post(serverUrl, request),
+            response => JSON.stringify(response.data) === JSON.stringify([Object.assign({}, john, { age: 5 })]),
+            RETRY_COUNT, SLEEP_WAIT_TIME);
 
         // Check the updated values of the fields are now returned
         const updatedResponse = await axios.post(serverUrl, request);
