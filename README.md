@@ -44,7 +44,7 @@ Mongo Stream Sight includes a suite of tests to validate its functionality. To p
    - Pull and run the `defreitas/dns-proxy-server` container:
      ```bash
      docker pull defreitas/dns-proxy-server
-     docker run -d --hostname dns.mageddo --name dns-proxy-server -p 5380:5380 -v /var/run/docker.sock:/var/run/docker.sock -v /etc/resolv.conf:/etc/resolv.conf defreitas/dns-proxy-server
+     docker run -d --hostname dns.mageddo --name dns-proxy-server -p 5380:5380 -v /var/run/docker.sock:/var/run/docker.sock -v /etc/resolv.conf:/etc/resolv.conf --restart unless-stopped defreitas/dns-proxy-server
      ```
 
 3. **Setup MongoDB Cluster**:
