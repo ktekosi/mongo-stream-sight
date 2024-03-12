@@ -12,7 +12,7 @@ async function retryOperation<T>(op: OperationFunction<T>, check: OperationCheck
     let result: T;
 
     for (let i = 0; i < retries; i++) {
-        console.log(`Retry ${i + 1} of ${retries}`);
+        if (i>1) console.log(`Retry ${i + 1} of ${retries}`);
         result = await op();
 
         if (check(result)) {
@@ -24,6 +24,14 @@ async function retryOperation<T>(op: OperationFunction<T>, check: OperationCheck
 }
 
 describe('Server Integration Tests', () => {
+
+    interface User {
+        _id: ObjectId
+        name?: string
+        age?: number
+        location?: string
+    }
+
     const LISTEN_PORT = parseInt(Bun.env.LISTEN_PORT ?? '8000');
     const MONGO_USERNAME = Bun.env.MONGO_USERNAME ?? 'root';
     const MONGO_PASSWORD = Bun.env.MONGO_PASSWORD ?? 'password';
@@ -143,31 +151,40 @@ describe('Server Integration Tests', () => {
             }
         };
 
-        await sleep(SLEEP_WAIT_TIME);
+        const projectedJohn = {
+            _id: john._id.toHexString(),
+            name: john.name,
+            age: john.age
+        };
+
+        await retryOperation(async() => await axios.post(serverUrl, request),
+            response => JSON.stringify(response.data) === JSON.stringify([projectedJohn]),
+            RETRY_COUNT, SLEEP_WAIT_TIME);
 
         const response = await axios.post(serverUrl, request);
 
         // Check response is correct (name and age fields should be returned)
-        expect(response.data).toEqual([{
-            _id: john._id.toHexString(),
-            name: john.name,
-            age: john.age
-        }]);
+        expect(response.data).toEqual([projectedJohn]);
 
         // Update fields that aren't in the filter
         await collection.updateOne(filter, { $set: { age: 5 } }, { writeConcern });
 
         await sleep(SLEEP_WAIT_TIME);
 
+        const updatedJohn = {
+            ...projectedJohn,
+            age: 5
+        };
+
+        await retryOperation(async() => await axios.post(serverUrl, request),
+            response => JSON.stringify(response.data) === JSON.stringify([updatedJohn]),
+        RETRY_COUNT, SLEEP_WAIT_TIME);
+
         // Check the updated values of the fields are now returned
         const updatedResponse = await axios.post(serverUrl, request);
 
         // Check the update has been reflected in the cache
-        expect(updatedResponse.data).toEqual([{
-            _id: john._id.toHexString(),
-            name: john.name,
-            age: 5 // Updated age
-        }]);
+        expect(updatedResponse.data).toEqual([updatedJohn]);
     });
 
     test('Update Fields Not in the Filter with Skip and Limit', async() => {
@@ -200,30 +217,39 @@ describe('Server Integration Tests', () => {
             }
         };
 
-        await sleep(SLEEP_WAIT_TIME);
+        const expected = [
+            JSON.parse(JSON.stringify(users[1])),
+            JSON.parse(JSON.stringify(users[2]))
+        ];
+
+        await retryOperation(async() => await axios.post(serverUrl, request),
+            response => JSON.stringify(response.data) === JSON.stringify(expected),
+            RETRY_COUNT, SLEEP_WAIT_TIME);
 
         const response = await axios.post(serverUrl, request);
 
         // Check response is correct with the specified skip and limit
-        expect(response.data).toEqual([
-            JSON.parse(JSON.stringify(users[1])),
-            JSON.parse(JSON.stringify(users[2]))
-        ]);
+        expect(response.data).toEqual(expected);
 
         // Update a field in one of the retrieved documents
         await collection.updateOne({ _id: users[1]._id }, { $set: { age: 16 } }, { writeConcern });
 
-        await sleep(SLEEP_WAIT_TIME);
+
+        const updatedUser = { ...users[1], age: 16 };
+        const updatedExpected = [
+            JSON.parse(JSON.stringify(updatedUser)),
+            JSON.parse(JSON.stringify(users[2]))
+        ];
+
+        await retryOperation(async() => await axios.post(serverUrl, request),
+            response => JSON.stringify(response.data) === JSON.stringify(updatedExpected),
+            RETRY_COUNT, SLEEP_WAIT_TIME);
 
         // Check the updated values of the fields are now returned
         const updatedResponse = await axios.post(serverUrl, request);
 
         // Check the update has been reflected in the cache
-        const updatedUser = { ...users[1], age: 16 };
-        expect(updatedResponse.data).toEqual([
-            JSON.parse(JSON.stringify(updatedUser)),
-            JSON.parse(JSON.stringify(users[2]))
-        ]);
+        expect(updatedResponse.data).toEqual(updatedExpected);
     });
 
     test('Update Fields in the Filter', async() => {
@@ -248,7 +274,11 @@ describe('Server Integration Tests', () => {
             }
         };
 
-        await sleep(SLEEP_WAIT_TIME);
+        const expected = documents;
+
+        await retryOperation(async() => await axios.post(serverUrl, request),
+            response => JSON.stringify(response.data) === JSON.stringify(expected),
+            RETRY_COUNT, SLEEP_WAIT_TIME);
 
         // Initial query to cache the documents
         const initialResponse = await axios.post(serverUrl, request);
@@ -257,16 +287,18 @@ describe('Server Integration Tests', () => {
         // Update an in-filter field (age) in a way that it still matches the filter
         await collection.updateOne({ _id: user2._id }, { $set: { age: 27 } }, { writeConcern });
 
-        await sleep(SLEEP_WAIT_TIME);
+        // Create an updated version of user2 for comparison
+        const updatedUser2 = { ...user2, age: 27 };
+        const expectedDocuments = [user1, updatedUser2, user3].map(doc => JSON.parse(JSON.stringify(doc)));
+
+        await retryOperation(async() => await axios.post(serverUrl, request),
+            response => JSON.stringify(response.data) === JSON.stringify(expectedDocuments),
+            RETRY_COUNT, SLEEP_WAIT_TIME);
 
         // Query again to check if the cache reflects the updated document
         const updatedResponse = await axios.post(serverUrl, request);
 
-        // Create an updated version of user2 for comparison
-        const updatedUser2 = { ...user2, age: 27 };
-
-        // Check that the updated documents are correctly reflected in the cache
-        const expectedDocuments = [user1, updatedUser2, user3].map(doc => JSON.parse(JSON.stringify(doc)));
+        // Check that the updated documents are correctly reflected in the cache        
         expect(updatedResponse.data).toEqual(expectedDocuments);
     });
 
@@ -298,26 +330,32 @@ describe('Server Integration Tests', () => {
             }
         };
 
-        await sleep(SLEEP_WAIT_TIME);
+        const expectedInitialDocs = [user1, user2, user3].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })).sort((a, b) => a.age - b.age);
+
+        await retryOperation(async() => await axios.post(serverUrl, request),
+            response => JSON.stringify(response.data) === JSON.stringify(expectedInitialDocs),
+            RETRY_COUNT, SLEEP_WAIT_TIME);
 
         // Initial query to cache the documents with sorting and projection
         const initialResponse = await axios.post(serverUrl, request);
-        const expectedInitialDocs = [user1, user2, user3].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })).sort((a, b) => a.age - b.age);
+
         expect(initialResponse.data).toEqual(expectedInitialDocs);
 
         // Update an in-filter field (age) in a way that it still matches the filter
         await collection.updateOne({ _id: user2._id }, { $set: { age: 27 } }, { writeConcern });
 
-        await sleep(SLEEP_WAIT_TIME);
+        // Create an updated version of user2 for comparison
+        const updatedUser2 = { _id: user2._id.toString(), name: user2.name, age: 27 };
+        const expectedUpdatedDocs = [user1, updatedUser2, user3].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })).sort((a, b) => a.age - b.age);
+
+        await retryOperation(async() => await axios.post(serverUrl, request),
+            response => JSON.stringify(response.data) === JSON.stringify(expectedUpdatedDocs),
+            RETRY_COUNT, SLEEP_WAIT_TIME);
 
         // Query again to check if the cache reflects the updated document with sorting and projection
         const updatedResponse = await axios.post(serverUrl, request);
 
-        // Create an updated version of user2 for comparison
-        const updatedUser2 = { _id: user2._id.toString(), name: user2.name, age: 27 };
-
         // Check that the updated documents are correctly reflected in the cache
-        const expectedUpdatedDocs = [user1, updatedUser2, user3].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })).sort((a, b) => a.age - b.age);
         expect(updatedResponse.data).toEqual(expectedUpdatedDocs);
     });
 
@@ -349,26 +387,32 @@ describe('Server Integration Tests', () => {
             }
         };
 
-        await sleep(SLEEP_WAIT_TIME);
+        const expectedInitialDocs = [user2, user3].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })); // User1 is skipped
+
+        await retryOperation(async() => await axios.post(serverUrl, request),
+            response => JSON.stringify(response.data) === JSON.stringify(expectedInitialDocs),
+            RETRY_COUNT, SLEEP_WAIT_TIME);
 
         // Initial query to cache the documents with skip and limit
         const initialResponse = await axios.post(serverUrl, request);
-        const expectedInitialDocs = [user2, user3].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })); // User1 is skipped
+        
         expect(initialResponse.data).toEqual(expectedInitialDocs);
 
         // Update an in-filter field (age) in a way that it still matches the filter
         await collection.updateOne({ _id: user2._id }, { $set: { age: 27 } }, { writeConcern });
 
-        await sleep(SLEEP_WAIT_TIME);
+        // Create an updated version of user2 for comparison
+        const updatedUser2 = { _id: user2._id.toString(), name: user2.name, age: 27 };
+        const expectedUpdatedDocs = [updatedUser2, user3].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age }));
+
+        await retryOperation(async() => await axios.post(serverUrl, request),
+            response => JSON.stringify(response.data) === JSON.stringify(expectedUpdatedDocs),
+            RETRY_COUNT, SLEEP_WAIT_TIME);
 
         // Query again to check if the cache reflects the updated document with skip and limit
         const updatedResponse = await axios.post(serverUrl, request);
 
-        // Create an updated version of user2 for comparison
-        const updatedUser2 = { _id: user2._id.toString(), name: user2.name, age: 27 };
-
         // Check that the updated documents are correctly reflected in the cache
-        const expectedUpdatedDocs = [updatedUser2, user3].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age }));
         expect(updatedResponse.data).toEqual(expectedUpdatedDocs);
     });
 
@@ -396,20 +440,29 @@ describe('Server Integration Tests', () => {
 
         await sleep(SLEEP_WAIT_TIME);
 
+        const expectedInitialDocs = documents.map(doc => JSON.parse(JSON.stringify(doc)));
+
+        await retryOperation(async() => await axios.post(serverUrl, request),
+            response => JSON.stringify(response.data) === JSON.stringify(expectedInitialDocs),
+            RETRY_COUNT, SLEEP_WAIT_TIME);
+
         // Initial query to cache the documents
         const initialResponse = await axios.post(serverUrl, request);
-        expect(initialResponse.data).toEqual(documents.map(doc => JSON.parse(JSON.stringify(doc))));
+        expect(initialResponse.data).toEqual(expectedInitialDocs);
 
         // Update a document in a way that it no longer matches the filter
         await collection.updateOne({ _id: user2._id }, { $set: { age: 18 } }, { writeConcern });
 
-        await sleep(SLEEP_WAIT_TIME);
+        const expectedDocuments = [user1, user3].map(doc => JSON.parse(JSON.stringify(doc)));
+
+        await retryOperation(async() => await axios.post(serverUrl, request),
+            response => JSON.stringify(response.data) === JSON.stringify(expectedDocuments),
+            RETRY_COUNT, SLEEP_WAIT_TIME);
 
         // Query again to check if the cache reflects the updated document
         const updatedResponse = await axios.post(serverUrl, request);
 
         // Check that user2 is no longer in the cache since it doesn't meet the filter criteria
-        const expectedDocuments = [user1, user3].map(doc => JSON.parse(JSON.stringify(doc)));
         expect(updatedResponse.data).toEqual(expectedDocuments);
     });
 
@@ -441,23 +494,30 @@ describe('Server Integration Tests', () => {
             }
         };
 
-        await sleep(SLEEP_WAIT_TIME);
+        const expectedInitialDocs = [user1, user2, user3].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })).sort((a, b) => a.age - b.age);
+
+        await retryOperation(async() => await axios.post(serverUrl, request),
+            response => JSON.stringify(response.data) === JSON.stringify(expectedInitialDocs),
+            RETRY_COUNT, SLEEP_WAIT_TIME);
 
         // Initial query to cache the documents with projection and sorting
         const initialResponse = await axios.post(serverUrl, request);
-        const expectedInitialDocs = [user1, user2, user3].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })).sort((a, b) => a.age - b.age);
+        
         expect(initialResponse.data).toEqual(expectedInitialDocs);
 
         // Update a document in a way that it no longer matches the filter
         await collection.updateOne({ _id: user2._id }, { $set: { age: 18 } }, { writeConcern });
 
-        await sleep(SLEEP_WAIT_TIME);
+        const expectedUpdatedDocs = [user1, user3].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })).sort((a, b) => a.age - b.age);
+        
+        await retryOperation(async() => await axios.post(serverUrl, request),
+            response => JSON.stringify(response.data) === JSON.stringify(expectedUpdatedDocs),
+            RETRY_COUNT, SLEEP_WAIT_TIME);
 
         // Query again to check if the cache reflects the updated document with projection and sorting
         const updatedResponse = await axios.post(serverUrl, request);
 
         // Check that user2 is no longer in the cache since it doesn't meet the filter criteria
-        const expectedUpdatedDocs = [user1, user3].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })).sort((a, b) => a.age - b.age);
         expect(updatedResponse.data).toEqual(expectedUpdatedDocs);
     });
 
@@ -489,23 +549,29 @@ describe('Server Integration Tests', () => {
             }
         };
 
-        await sleep(SLEEP_WAIT_TIME);
+        const expectedInitialDocs = [user2, user3].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })); // User1 is skipped
+        await retryOperation(async() => await axios.post(serverUrl, request),
+            response => JSON.stringify(response.data) === JSON.stringify(expectedInitialDocs),
+            RETRY_COUNT, SLEEP_WAIT_TIME);
 
         // Initial query to cache the documents with skip and limit
         const initialResponse = await axios.post(serverUrl, request);
-        const expectedInitialDocs = [user2, user3].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })); // User1 is skipped
+        
         expect(initialResponse.data).toEqual(expectedInitialDocs);
 
         // Update a document in a way that it no longer matches the filter
         await collection.updateOne({ _id: user2._id }, { $set: { age: 18 } }, { writeConcern });
 
-        await sleep(SLEEP_WAIT_TIME);
+        const expectedUpdatedDocs = [user3].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })); // Only User3 should be returned
+
+        await retryOperation(async() => await axios.post(serverUrl, request),
+            response => JSON.stringify(response.data) === JSON.stringify(expectedUpdatedDocs),
+            RETRY_COUNT, SLEEP_WAIT_TIME);
 
         // Query again to check if the cache reflects the updated document with skip and limit
         const updatedResponse = await axios.post(serverUrl, request);
 
         // Check that user2 is no longer in the cache since it doesn't meet the filter criteria
-        const expectedUpdatedDocs = [user3].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })); // Only User3 should be returned
         expect(updatedResponse.data).toEqual(expectedUpdatedDocs);
     });
 
@@ -531,24 +597,31 @@ describe('Server Integration Tests', () => {
             }
         };
 
-        await sleep(SLEEP_WAIT_TIME);
+        const expectedInitialDocs = [user1, user3].map(doc => JSON.parse(JSON.stringify(doc)));
+
+        await retryOperation(async() => await axios.post(serverUrl, request),
+            response => JSON.stringify(response.data) === JSON.stringify(expectedInitialDocs),
+            RETRY_COUNT, SLEEP_WAIT_TIME);
 
         // Initial query to cache the documents that meet the filter criteria
         const initialResponse = await axios.post(serverUrl, request);
-        const expectedInitialDocs = [user1, user3].map(doc => JSON.parse(JSON.stringify(doc)));
+        
         expect(initialResponse.data).toEqual(expectedInitialDocs);
 
         // Update user2 to match the filter criteria
         await collection.updateOne({ _id: user2._id }, { $set: { age: 21 } }, { writeConcern });
 
-        await sleep(SLEEP_WAIT_TIME);
+        const updatedUser2 = { ...user2, age: 21 };
+        const expectedUpdatedDocs = [user1, user3, updatedUser2].map(doc => JSON.parse(JSON.stringify(doc)));
+
+        await retryOperation(async() => await axios.post(serverUrl, request),
+            response => JSON.stringify(response.data) === JSON.stringify(expectedUpdatedDocs),
+            RETRY_COUNT, SLEEP_WAIT_TIME);
 
         // Query again to check if the cache reflects the updated document
         const updatedResponse = await axios.post(serverUrl, request);
 
         // Check that user2 now appears in the cache
-        const updatedUser2 = { ...user2, age: 21 };
-        const expectedUpdatedDocs = [user1, user3, updatedUser2].map(doc => JSON.parse(JSON.stringify(doc)));
         expect(updatedResponse.data).toEqual(expectedUpdatedDocs);
     });
 
@@ -578,24 +651,31 @@ describe('Server Integration Tests', () => {
             }
         };
 
-        await sleep(SLEEP_WAIT_TIME);
+        const expectedInitialDocs = [user1, user3].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })).sort((a, b) => b.age - a.age);
+
+        await retryOperation(async() => await axios.post(serverUrl, request),
+            response => JSON.stringify(response.data) === JSON.stringify(expectedInitialDocs),
+            RETRY_COUNT, SLEEP_WAIT_TIME);
 
         // Initial query to cache the documents with projection and sorting
         const initialResponse = await axios.post(serverUrl, request);
-        const expectedInitialDocs = [user1, user3].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })).sort((a, b) => b.age - a.age);
+        
         expect(initialResponse.data).toEqual(expectedInitialDocs);
 
         // Update user2 to match the filter criteria
         await collection.updateOne({ _id: user2._id }, { $set: { age: 21 } }, { writeConcern });
 
-        await sleep(SLEEP_WAIT_TIME); // Wait to ensure the cache is updated
+        const updatedUser2 = { _id: user2._id.toString(), name: user2.name, age: 21 };
+        const expectedUpdatedDocs = [user1, user3, updatedUser2].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })).sort((a, b) => b.age - a.age);
+
+        await retryOperation(async() => await axios.post(serverUrl, request),
+            response => JSON.stringify(response.data) === JSON.stringify(expectedUpdatedDocs),
+            RETRY_COUNT, SLEEP_WAIT_TIME);
 
         // Query again to check if the cache reflects the updated document with projection and sorting
         const updatedResponse = await axios.post(serverUrl, request);
 
         // Check that user2 now appears in the cache
-        const updatedUser2 = { _id: user2._id.toString(), name: user2.name, age: 21 };
-        const expectedUpdatedDocs = [user1, user3, updatedUser2].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })).sort((a, b) => b.age - a.age);
         expect(updatedResponse.data).toEqual(expectedUpdatedDocs);
     });
 
@@ -628,24 +708,30 @@ describe('Server Integration Tests', () => {
             }
         };
 
-        await sleep(SLEEP_WAIT_TIME);
+        const expectedInitialDocs = [user3, user1].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })); // User4 and User3 are included
+
+        await retryOperation(async() => await axios.post(serverUrl, request),
+            response => JSON.stringify(response.data) === JSON.stringify(expectedInitialDocs),
+            RETRY_COUNT, SLEEP_WAIT_TIME);
 
         // Initial query to cache the documents with skip, limit, and sorting
         const initialResponse = await axios.post(serverUrl, request);
-        const expectedInitialDocs = [user3, user1].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })); // User4 and User3 are included
         expect(initialResponse.data).toEqual(expectedInitialDocs);
 
         // Update user2 to match the filter criteria
         await collection.updateOne({ _id: user2._id }, { $set: { age: 21 } }, { writeConcern });
 
-        await sleep(SLEEP_WAIT_TIME); // Wait to ensure the cache is updated
+        // Check that user2 now appears in the cache
+        const updatedUser2 = { _id: user2._id.toString(), name: user2.name, age: 21 };
+        const expectedUpdatedDocs = [user3, updatedUser2].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })); // User4 and updated User2 should be returned
+
+        await retryOperation(async() => await axios.post(serverUrl, request),
+            response => JSON.stringify(response.data) === JSON.stringify(expectedUpdatedDocs),
+            RETRY_COUNT, SLEEP_WAIT_TIME);
 
         // Query again to check if the cache reflects the updated document with skip, limit, and sorting
         const updatedResponse = await axios.post(serverUrl, request);
 
-        // Check that user2 now appears in the cache
-        const updatedUser2 = { _id: user2._id.toString(), name: user2.name, age: 21 };
-        const expectedUpdatedDocs = [user3, updatedUser2].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })); // User4 and updated User2 should be returned
         expect(updatedResponse.data).toEqual(expectedUpdatedDocs);
     });
 
@@ -668,10 +754,14 @@ describe('Server Integration Tests', () => {
             }
         };
 
-        await sleep(SLEEP_WAIT_TIME);
+        const expectedInitialDocuments = [JSON.parse(JSON.stringify(existingUser))];
+
+        await retryOperation(async() => await axios.post(serverUrl, request),
+            response => JSON.stringify(response.data) === JSON.stringify(expectedInitialDocuments),
+            RETRY_COUNT, SLEEP_WAIT_TIME);
 
         const initialResponse = await axios.post(serverUrl, request);
-        expect(initialResponse.data).toEqual([JSON.parse(JSON.stringify(existingUser))]);
+        expect(initialResponse.data).toEqual(expectedInitialDocuments);
 
         // Insert new documents, some of which match the filter
         const newUser1 = { _id: new ObjectId(), name: 'NewUser1', age: 25 }; // This should match
@@ -680,12 +770,15 @@ describe('Server Integration Tests', () => {
         const newDocuments = [newUser1, newUser2, newUser3];
         await collection.insertMany(newDocuments, { writeConcern });
 
-        await sleep(SLEEP_WAIT_TIME);
+        const expectedUpdatedDocs = [existingUser, newUser1, newUser3].map(doc => JSON.parse(JSON.stringify(doc)));
+
+        await retryOperation(async() => await axios.post(serverUrl, request),
+            response => JSON.stringify(response.data) === JSON.stringify(expectedUpdatedDocs),
+            RETRY_COUNT, SLEEP_WAIT_TIME);
 
         // Check that only the new documents matching the filter are returned
         const updatedResponse = await axios.post(serverUrl, request);
-        const expectedDocuments = [existingUser, newUser1, newUser3].map(doc => JSON.parse(JSON.stringify(doc)));
-        expect(updatedResponse.data).toEqual(expectedDocuments);
+        expect(updatedResponse.data).toEqual(expectedUpdatedDocs);
     });
 
     test('Check for Newly Inserted Documents with Projection and Sorting', async() => {
@@ -711,10 +804,13 @@ describe('Server Integration Tests', () => {
             }
         };
 
-        await sleep(SLEEP_WAIT_TIME);
+        const expectedInitialDocs = [{ _id: existingUser._id.toString(), name: existingUser.name, age: existingUser.age }];
+        await retryOperation(async() => await axios.post(serverUrl, request),
+            response => JSON.stringify(response.data) === JSON.stringify(expectedInitialDocs),
+            RETRY_COUNT, SLEEP_WAIT_TIME);
 
         const initialResponse = await axios.post(serverUrl, request);
-        const expectedInitialDocs = [{ _id: existingUser._id.toString(), name: existingUser.name, age: existingUser.age }];
+        
         expect(initialResponse.data).toEqual(expectedInitialDocs);
 
         // Insert new documents, some of which match the filter
@@ -724,12 +820,15 @@ describe('Server Integration Tests', () => {
         const newDocuments = [newUser1, newUser2, newUser3];
         await collection.insertMany(newDocuments, { writeConcern });
 
-        await sleep(SLEEP_WAIT_TIME);
+        const expectedUpdatedDocs = [existingUser, newUser1, newUser3].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })).sort((a, b) => b.age - a.age);
+        await retryOperation(async() => await axios.post(serverUrl, request),
+            response => JSON.stringify(response.data) === JSON.stringify(expectedUpdatedDocs),
+            RETRY_COUNT, SLEEP_WAIT_TIME);
 
         // Check that only the new documents matching the filter are returned
         const updatedResponse = await axios.post(serverUrl, request);
-        const expectedDocuments = [existingUser, newUser1, newUser3].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })).sort((a, b) => b.age - a.age);
-        expect(updatedResponse.data).toEqual(expectedDocuments);
+        
+        expect(updatedResponse.data).toEqual(expectedUpdatedDocs);
     });
 
     test('Check for Newly Inserted Documents with Skip and Limit', async() => {
@@ -755,7 +854,11 @@ describe('Server Integration Tests', () => {
             }
         };
 
-        await sleep(SLEEP_WAIT_TIME);
+        const expectedInitialDocs: User[] = [];
+
+        await retryOperation(async() => await axios.post(serverUrl, request),
+            response => JSON.stringify(response.data) === JSON.stringify(expectedInitialDocs),
+            RETRY_COUNT, SLEEP_WAIT_TIME);
 
         const initialResponse = await axios.post(serverUrl, request);
         // Expect no documents initially since the limit is 1 and we are skipping the existing user
@@ -768,12 +871,17 @@ describe('Server Integration Tests', () => {
         const newDocuments = [newUser1, newUser2, newUser3];
         await collection.insertMany(newDocuments, { writeConcern });
 
-        await sleep(SLEEP_WAIT_TIME);
+
+        const expectedDocument = [{ _id: newUser1._id.toString(), name: newUser1.name, age: newUser1.age }];
+        
+        await retryOperation(async() => await axios.post(serverUrl, request),
+            response => JSON.stringify(response.data) === JSON.stringify(expectedDocument),
+            RETRY_COUNT, SLEEP_WAIT_TIME);
 
         // Check that only the new documents matching the filter are returned
         const updatedResponse = await axios.post(serverUrl, request);
         // Expect newUser1 to be the one returned since it's the second document matching the filter
-        const expectedDocument = [{ _id: newUser1._id.toString(), name: newUser1.name, age: newUser1.age }];
+        
         expect(updatedResponse.data).toEqual(expectedDocument);
     });
 
@@ -790,7 +898,7 @@ describe('Server Integration Tests', () => {
 
         // Perform a query to ensure all documents are cached
         const filterForCache = {};
-        const cacheQueryRequest = {
+        const request = {
             method: 'find',
             params: {
                 db: DB_NAME,
@@ -799,22 +907,29 @@ describe('Server Integration Tests', () => {
             }
         };
 
-        await sleep(SLEEP_WAIT_TIME);
+        const expectedInitialDocs = documents.map(doc => JSON.parse(JSON.stringify(doc)));
 
-        const initialResponse = await axios.post(serverUrl, cacheQueryRequest);
-        expect(initialResponse.data).toEqual(documents.map(doc => JSON.parse(JSON.stringify(doc))));
+        await retryOperation(async() => await axios.post(serverUrl, request),
+            response => JSON.stringify(response.data) === JSON.stringify(expectedInitialDocs),
+            RETRY_COUNT, SLEEP_WAIT_TIME);
+
+        const initialResponse = await axios.post(serverUrl, request);
+        expect(initialResponse.data).toEqual(expectedInitialDocs);
 
         // Delete the specific document
         await collection.deleteOne({ _id: userToDelete._id }, { writeConcern });
 
-        await sleep(SLEEP_WAIT_TIME);
+        const expectedUpdatedDocs = [otherUser1, otherUser2].map(doc => JSON.parse(JSON.stringify(doc)));
 
         // Query again to check if the cache has been updated correctly
-        const updatedResponse = await axios.post(serverUrl, cacheQueryRequest);
+        const updatedResponse = await axios.post(serverUrl, request);
+
+        await retryOperation(async() => await axios.post(serverUrl, request),
+            response => JSON.stringify(response.data) === JSON.stringify(expectedUpdatedDocs),
+            RETRY_COUNT, SLEEP_WAIT_TIME);
 
         // Expect the cache to return all documents except the deleted one
-        const expectedDocuments = [otherUser1, otherUser2].map(doc => JSON.parse(JSON.stringify(doc)));
-        expect(updatedResponse.data).toEqual(expectedDocuments);
+        expect(updatedResponse.data).toEqual(expectedUpdatedDocs);
     });
 
     test('Check Cache After Deleting a Specific Document with Projection and Sorting', async() => {
@@ -832,7 +947,7 @@ describe('Server Integration Tests', () => {
         const filterForCache = {};
         const projection = { name: 1, age: 1 }; // Projecting only name and age fields
         const sort = { age: -1 }; // Sorting by age in descending order
-        const cacheQueryRequest = {
+        const request = {
             method: 'find',
             params: {
                 db: DB_NAME,
@@ -843,23 +958,31 @@ describe('Server Integration Tests', () => {
             }
         };
 
-        await sleep(SLEEP_WAIT_TIME);
 
-        const initialResponse = await axios.post(serverUrl, cacheQueryRequest);
         const expectedInitialDocs = documents.map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })).sort((a, b) => b.age - a.age);
+
+        await retryOperation(async() => await axios.post(serverUrl, request),
+            response => JSON.stringify(response.data) === JSON.stringify(expectedInitialDocs),
+            RETRY_COUNT, SLEEP_WAIT_TIME);
+
+        const initialResponse = await axios.post(serverUrl, request);
+        
         expect(initialResponse.data).toEqual(expectedInitialDocs);
 
         // Delete the specific document
         await collection.deleteOne({ _id: userToDelete._id }, { writeConcern });
 
-        await sleep(SLEEP_WAIT_TIME);
+        const expectedUpdatedDocs = [otherUser1, otherUser2].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })).sort((a, b) => b.age - a.age);
+        
+        await retryOperation(async() => await axios.post(serverUrl, request),
+            response => JSON.stringify(response.data) === JSON.stringify(expectedUpdatedDocs),
+            RETRY_COUNT, SLEEP_WAIT_TIME);
 
         // Query again to check if the cache has been updated correctly
-        const updatedResponse = await axios.post(serverUrl, cacheQueryRequest);
+        const updatedResponse = await axios.post(serverUrl, request);
 
         // Expect the cache to return all documents except the deleted one, with projection and sorting applied
-        const expectedDocuments = [otherUser1, otherUser2].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })).sort((a, b) => b.age - a.age);
-        expect(updatedResponse.data).toEqual(expectedDocuments);
+        expect(updatedResponse.data).toEqual(expectedUpdatedDocs);
     });
 
     test('Check Cache After Deleting a Specific Document with Skip, Limit, and Sorting', async() => {
@@ -878,7 +1001,7 @@ describe('Server Integration Tests', () => {
         const skip = 1; // Skip the first document
         const limit = 1; // Limit to 1 document
         const sort = { age: 1 }; // Sorting by age in ascending order
-        const cacheQueryRequest = {
+        const request = {
             method: 'find',
             params: {
                 db: DB_NAME,
@@ -890,22 +1013,29 @@ describe('Server Integration Tests', () => {
             }
         };
 
-        await sleep(SLEEP_WAIT_TIME);
+        const expectedInitialDocs = [otherUser2].map(doc => JSON.parse(JSON.stringify(doc)));
 
-        const initialResponse = await axios.post(serverUrl, cacheQueryRequest);
+
+        await retryOperation(async() => await axios.post(serverUrl, request),
+            response => JSON.stringify(response.data) === JSON.stringify(expectedInitialDocs),
+            RETRY_COUNT, SLEEP_WAIT_TIME);
+
+        const initialResponse = await axios.post(serverUrl, request);
+
         // Expect to return only the second document in sorted order
-        const expectedInitialDoc = [otherUser2].map(doc => JSON.parse(JSON.stringify(doc)));
-        expect(initialResponse.data).toEqual(expectedInitialDoc);
+        expect(initialResponse.data).toEqual(expectedInitialDocs);
 
         // Delete the specific document
         await collection.deleteOne({ _id: userToDelete._id }, { writeConcern });
 
-        await sleep(SLEEP_WAIT_TIME);
+        await retryOperation(async() => await axios.post(serverUrl, request),
+            response => JSON.stringify(response.data) === JSON.stringify(expectedInitialDocs),
+            RETRY_COUNT, SLEEP_WAIT_TIME);
 
         // Query again to check if the cache has been updated correctly
-        const updatedResponse = await axios.post(serverUrl, cacheQueryRequest);
+        const updatedResponse = await axios.post(serverUrl, request);
 
         // Expect the cache to return the same document as before since the deleted one was not in the initial result set
-        expect(updatedResponse.data).toEqual(expectedInitialDoc);
+        expect(updatedResponse.data).toEqual(expectedInitialDocs);
     });
 });
