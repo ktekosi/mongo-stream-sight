@@ -1,4 +1,4 @@
-import { MongoClient, ObjectId, type WriteConcernSettings } from 'mongodb';
+import { type Collection, type Document, MongoClient, ObjectId, type WriteConcernSettings } from 'mongodb';
 import axios from 'axios';
 import { afterAll, beforeAll, describe, test, expect, afterEach, beforeEach } from 'bun:test';
 import { type MongoStreamSightServer, startApp } from '../../src/app.ts';
@@ -79,958 +79,500 @@ describe('Server Integration Tests', () => {
 
     });
 
-    test('Update Fields Not in the Filter', async() => {
-        const collection = client.db(DB_NAME).collection('users');
-
-        // Manually create ObjectId values
-        const john = { _id: new ObjectId(), name: 'John', age: 10 };
-        const jane = { _id: new ObjectId(), name: 'Jane', age: 15 };
-
-        // Insert documents with manual _id values
-        const documents = [john, jane];
-        await collection.insertMany(documents, { writeConcern });
-
-        // Find documents by filter
-        const filter = { name: 'John' };
-        const request = {
-            method: 'find',
-            params: {
-                db: DB_NAME,
-                collection: 'users',
-                query: filter
-            }
-        };
-
-        await retryOperation(async() => await axios.post(serverUrl, request),
-            response => JSON.stringify(response.data) === JSON.stringify([john]),
-            RETRY_COUNT, SLEEP_WAIT_TIME);
-
-        const response = await axios.post(serverUrl, request);
-
-        // Check response is correct
-        expect(response.data).toEqual([JSON.parse(JSON.stringify(john))]);
-
-        // Update fields that aren't in the filter
-        await collection.updateOne(filter, { $set: { age: 5 } }, { writeConcern });
-
-        await retryOperation(async() => await axios.post(serverUrl, request),
-            response => JSON.stringify(response.data) === JSON.stringify([Object.assign({}, john, { age: 5 })]),
-            RETRY_COUNT, SLEEP_WAIT_TIME);
-
-        // Check the updated values of the fields are now returned
-        const updatedResponse = await axios.post(serverUrl, request);
-
-        // Check the update has been reflected in the cache
-        expect(updatedResponse.data).toEqual([JSON.parse(JSON.stringify(Object.assign({}, john, { age: 5 })))]);
-    });
-
-    test('Update Fields Not in the Filter with Sort and Projection', async() => {
-        const collection = client.db(DB_NAME).collection('users');
-
-        // Manually create ObjectId values and add an extra field (e.g., 'location')
-        const john = { _id: new ObjectId(), name: 'John', age: 10, location: 'CityA' };
-        const jane = { _id: new ObjectId(), name: 'Jane', age: 15, location: 'CityB' };
-
-        // Insert documents with manual _id values
-        const documents = [john, jane];
-        await collection.insertMany(documents, { writeConcern });
-
-        // Find documents by filter with sort and projection
-        const filter = { name: 'John' };
-        const sort = { age: -1 }; // Sorting by age in descending order
-        const projection = { name: 1, age: 1 }; // Projecting name and age fields
-        const request = {
-            method: 'find',
-            params: {
-                db: DB_NAME,
-                collection: 'users',
-                query: filter,
-                projection,
-                sort
-            }
-        };
-
-        const projectedJohn = {
-            _id: john._id.toHexString(),
-            name: john.name,
-            age: john.age
-        };
-
-        await retryOperation(async() => await axios.post(serverUrl, request),
-            response => JSON.stringify(response.data) === JSON.stringify([projectedJohn]),
-            RETRY_COUNT, SLEEP_WAIT_TIME);
-
-        const response = await axios.post(serverUrl, request);
-
-        // Check response is correct (name and age fields should be returned)
-        expect(response.data).toEqual([projectedJohn]);
-
-        // Update fields that aren't in the filter
-        await collection.updateOne(filter, { $set: { age: 5 } }, { writeConcern });
-
-        await sleep(SLEEP_WAIT_TIME);
-
-        const updatedJohn = {
-            ...projectedJohn,
-            age: 5
-        };
-
-        await retryOperation(async() => await axios.post(serverUrl, request),
-            response => JSON.stringify(response.data) === JSON.stringify([updatedJohn]),
-            RETRY_COUNT, SLEEP_WAIT_TIME);
-
-        // Check the updated values of the fields are now returned
-        const updatedResponse = await axios.post(serverUrl, request);
-
-        // Check the update has been reflected in the cache
-        expect(updatedResponse.data).toEqual([updatedJohn]);
-    });
-
-    test('Update Fields Not in the Filter with Skip and Limit', async() => {
-        const collection = client.db(DB_NAME).collection('users');
-
-        // Manually create ObjectId values for multiple users
-        const users = [
-            { _id: new ObjectId(), name: 'John', age: 10 },
-            { _id: new ObjectId(), name: 'Jane', age: 15 },
-            { _id: new ObjectId(), name: 'Jim', age: 20 },
-            { _id: new ObjectId(), name: 'Jill', age: 25 },
-            { _id: new ObjectId(), name: 'Jack', age: 30 }
-        ];
-
-        // Insert multiple documents
-        await collection.insertMany(users);
-
-        // Find documents by filter with skip and limit
-        const filter = { name: { $in: ['John', 'Jane', 'Jim', 'Jill', 'Jack'] } };
-        const skip = 1; // Skip the first document
-        const limit = 2; // Limit to 2 documents
-        const request = {
-            method: 'find',
-            params: {
-                db: DB_NAME,
-                collection: 'users',
-                query: filter,
-                skip,
-                limit
-            }
-        };
-
-        const expected = [
-            JSON.parse(JSON.stringify(users[1])),
-            JSON.parse(JSON.stringify(users[2]))
-        ];
-
-        await retryOperation(async() => await axios.post(serverUrl, request),
-            response => JSON.stringify(response.data) === JSON.stringify(expected),
-            RETRY_COUNT, SLEEP_WAIT_TIME);
-
-        const response = await axios.post(serverUrl, request);
-
-        // Check response is correct with the specified skip and limit
-        expect(response.data).toEqual(expected);
-
-        // Update a field in one of the retrieved documents
-        await collection.updateOne({ _id: users[1]._id }, { $set: { age: 16 } }, { writeConcern });
-
-        const updatedUser = { ...users[1], age: 16 };
-        const updatedExpected = [
-            JSON.parse(JSON.stringify(updatedUser)),
-            JSON.parse(JSON.stringify(users[2]))
-        ];
-
-        await retryOperation(async() => await axios.post(serverUrl, request),
-            response => JSON.stringify(response.data) === JSON.stringify(updatedExpected),
-            RETRY_COUNT, SLEEP_WAIT_TIME);
-
-        // Check the updated values of the fields are now returned
-        const updatedResponse = await axios.post(serverUrl, request);
-
-        // Check the update has been reflected in the cache
-        expect(updatedResponse.data).toEqual(updatedExpected);
-    });
-
-    test('Update Fields in the Filter', async() => {
-        const COLLECTION_NAME = 'users';
-        const collection = client.db(DB_NAME).collection(COLLECTION_NAME);
-
-        // Insert initial documents
-        const user1 = { _id: new ObjectId(), name: 'User1', age: 20 };
-        const user2 = { _id: new ObjectId(), name: 'User2', age: 25 };
-        const user3 = { _id: new ObjectId(), name: 'User3', age: 30 };
-        const documents = [user1, user2, user3];
-        await collection.insertMany(documents, { writeConcern });
-
-        // Filter that includes documents based on age
-        const filter = { age: { $gt: 18 } };
-        const request = {
-            method: 'find',
-            params: {
-                db: DB_NAME,
-                collection: COLLECTION_NAME,
-                query: filter
-            }
-        };
-
-        const expected = documents;
-
-        await retryOperation(async() => await axios.post(serverUrl, request),
-            response => JSON.stringify(response.data) === JSON.stringify(expected),
-            RETRY_COUNT, SLEEP_WAIT_TIME);
-
-        // Initial query to cache the documents
-        const initialResponse = await axios.post(serverUrl, request);
-        expect(initialResponse.data).toEqual(documents.map(doc => JSON.parse(JSON.stringify(doc))));
-
-        // Update an in-filter field (age) in a way that it still matches the filter
-        await collection.updateOne({ _id: user2._id }, { $set: { age: 27 } }, { writeConcern });
-
-        // Create an updated version of user2 for comparison
-        const updatedUser2 = { ...user2, age: 27 };
-        const expectedDocuments = [user1, updatedUser2, user3].map(doc => JSON.parse(JSON.stringify(doc)));
-
-        await retryOperation(async() => await axios.post(serverUrl, request),
-            response => JSON.stringify(response.data) === JSON.stringify(expectedDocuments),
-            RETRY_COUNT, SLEEP_WAIT_TIME);
-
-        // Query again to check if the cache reflects the updated document
-        const updatedResponse = await axios.post(serverUrl, request);
-
-        // Check that the updated documents are correctly reflected in the cache
-        expect(updatedResponse.data).toEqual(expectedDocuments);
-    });
-
-    test('Update Fields in the Filter with Projection and Sorting', async() => {
-        const COLLECTION_NAME = 'users';
-        const collection = client.db(DB_NAME).collection(COLLECTION_NAME);
-
-        // Insert initial documents
-        const user1 = { _id: new ObjectId(), name: 'User1', age: 20, location: 'CityA' };
-        const user2 = { _id: new ObjectId(), name: 'User2', age: 25, location: 'CityB' };
-        const user3 = { _id: new ObjectId(), name: 'User3', age: 30, location: 'CityC' };
-        const user4 = { _id: new ObjectId(), name: 'User4', age: 15, location: 'CityD' }; // Does not meet filter
-        const user5 = { _id: new ObjectId(), name: 'User5', age: 16, location: 'CityE' }; // Does not meet filter
-        const documents = [user1, user2, user3, user4, user5];
-        await collection.insertMany(documents, { writeConcern });
-
-        // Filter that includes documents based on age
-        const filter = { age: { $gt: 18 } };
-        const sort = { age: 1 }; // Sorting by age in ascending order
-        const projection = { name: 1, age: 1 }; // Projecting only name and age fields
-        const request = {
-            method: 'find',
-            params: {
-                db: DB_NAME,
-                collection: COLLECTION_NAME,
-                query: filter,
-                projection,
-                sort
-            }
-        };
-
-        const expectedInitialDocs = [user1, user2, user3].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })).sort((a, b) => a.age - b.age);
-
-        await retryOperation(async() => await axios.post(serverUrl, request),
-            response => JSON.stringify(response.data) === JSON.stringify(expectedInitialDocs),
-            RETRY_COUNT, SLEEP_WAIT_TIME);
-
-        // Initial query to cache the documents with sorting and projection
-        const initialResponse = await axios.post(serverUrl, request);
-
-        expect(initialResponse.data).toEqual(expectedInitialDocs);
-
-        // Update an in-filter field (age) in a way that it still matches the filter
-        await collection.updateOne({ _id: user2._id }, { $set: { age: 27 } }, { writeConcern });
-
-        // Create an updated version of user2 for comparison
-        const updatedUser2 = { _id: user2._id.toString(), name: user2.name, age: 27 };
-        const expectedUpdatedDocs = [user1, updatedUser2, user3].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })).sort((a, b) => a.age - b.age);
-
-        await retryOperation(async() => await axios.post(serverUrl, request),
-            response => JSON.stringify(response.data) === JSON.stringify(expectedUpdatedDocs),
-            RETRY_COUNT, SLEEP_WAIT_TIME);
-
-        // Query again to check if the cache reflects the updated document with sorting and projection
-        const updatedResponse = await axios.post(serverUrl, request);
-
-        // Check that the updated documents are correctly reflected in the cache
-        expect(updatedResponse.data).toEqual(expectedUpdatedDocs);
-    });
-
-    test('Update Fields in the Filter with Skip and Limit', async() => {
-        const COLLECTION_NAME = 'users';
-        const collection = client.db(DB_NAME).collection(COLLECTION_NAME);
-
-        // Insert initial documents, including some that do not meet the filter criteria
-        const user1 = { _id: new ObjectId(), name: 'User1', age: 20 };
-        const user2 = { _id: new ObjectId(), name: 'User2', age: 25 };
-        const user3 = { _id: new ObjectId(), name: 'User3', age: 30 };
-        const user4 = { _id: new ObjectId(), name: 'User4', age: 15 }; // Does not meet filter
-        const user5 = { _id: new ObjectId(), name: 'User5', age: 16 }; // Does not meet filter
-        const documents = [user1, user2, user3, user4, user5];
-        await collection.insertMany(documents, { writeConcern });
-
-        // Filter that includes documents based on age
-        const filter = { age: { $gt: 18 } };
-        const skip = 1; // Skip the first document
-        const limit = 2; // Limit to 2 documents
-        const request = {
-            method: 'find',
-            params: {
-                db: DB_NAME,
-                collection: COLLECTION_NAME,
-                query: filter,
-                skip,
-                limit
-            }
-        };
-
-        const expectedInitialDocs = [user2, user3].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })); // User1 is skipped
-
-        await retryOperation(async() => await axios.post(serverUrl, request),
-            response => JSON.stringify(response.data) === JSON.stringify(expectedInitialDocs),
-            RETRY_COUNT, SLEEP_WAIT_TIME);
-
-        // Initial query to cache the documents with skip and limit
-        const initialResponse = await axios.post(serverUrl, request);
-
-        expect(initialResponse.data).toEqual(expectedInitialDocs);
-
-        // Update an in-filter field (age) in a way that it still matches the filter
-        await collection.updateOne({ _id: user2._id }, { $set: { age: 27 } }, { writeConcern });
-
-        // Create an updated version of user2 for comparison
-        const updatedUser2 = { _id: user2._id.toString(), name: user2.name, age: 27 };
-        const expectedUpdatedDocs = [updatedUser2, user3].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age }));
-
-        await retryOperation(async() => await axios.post(serverUrl, request),
-            response => JSON.stringify(response.data) === JSON.stringify(expectedUpdatedDocs),
-            RETRY_COUNT, SLEEP_WAIT_TIME);
-
-        // Query again to check if the cache reflects the updated document with skip and limit
-        const updatedResponse = await axios.post(serverUrl, request);
-
-        // Check that the updated documents are correctly reflected in the cache
-        expect(updatedResponse.data).toEqual(expectedUpdatedDocs);
-    });
-
-    test('Update Fields Resulting in Document Exclusion from Cache', async() => {
-        const COLLECTION_NAME = 'users';
-        const collection = client.db(DB_NAME).collection(COLLECTION_NAME);
-
-        // Insert initial documents
-        const user1 = { _id: new ObjectId(), name: 'User1', age: 20 };
-        const user2 = { _id: new ObjectId(), name: 'User2', age: 25 };
-        const user3 = { _id: new ObjectId(), name: 'User3', age: 30 };
-        const documents = [user1, user2, user3];
-        await collection.insertMany(documents, { writeConcern });
-
-        // Filter that includes documents based on age
-        const filter = { age: { $gt: 18 } };
-        const request = {
-            method: 'find',
-            params: {
-                db: DB_NAME,
-                collection: COLLECTION_NAME,
-                query: filter
-            }
-        };
-
-        await sleep(SLEEP_WAIT_TIME);
-
-        const expectedInitialDocs = documents.map(doc => JSON.parse(JSON.stringify(doc)));
-
-        await retryOperation(async() => await axios.post(serverUrl, request),
-            response => JSON.stringify(response.data) === JSON.stringify(expectedInitialDocs),
-            RETRY_COUNT, SLEEP_WAIT_TIME);
-
-        // Initial query to cache the documents
-        const initialResponse = await axios.post(serverUrl, request);
-        expect(initialResponse.data).toEqual(expectedInitialDocs);
-
-        // Update a document in a way that it no longer matches the filter
-        await collection.updateOne({ _id: user2._id }, { $set: { age: 18 } }, { writeConcern });
-
-        const expectedDocuments = [user1, user3].map(doc => JSON.parse(JSON.stringify(doc)));
-
-        await retryOperation(async() => await axios.post(serverUrl, request),
-            response => JSON.stringify(response.data) === JSON.stringify(expectedDocuments),
-            RETRY_COUNT, SLEEP_WAIT_TIME);
-
-        // Query again to check if the cache reflects the updated document
-        const updatedResponse = await axios.post(serverUrl, request);
-
-        // Check that user2 is no longer in the cache since it doesn't meet the filter criteria
-        expect(updatedResponse.data).toEqual(expectedDocuments);
-    });
-
-    test('Update Fields Resulting in Document Exclusion from Cache with Projection and Sorting', async() => {
-        const COLLECTION_NAME = 'users';
-        const collection = client.db(DB_NAME).collection(COLLECTION_NAME);
-
-        // Insert initial documents, including extra fields and some that do not meet the filter criteria
-        const user1 = { _id: new ObjectId(), name: 'User1', age: 20, location: 'CityA' };
-        const user2 = { _id: new ObjectId(), name: 'User2', age: 25, location: 'CityB' };
-        const user3 = { _id: new ObjectId(), name: 'User3', age: 30, location: 'CityC' };
-        const user4 = { _id: new ObjectId(), name: 'User4', age: 15, location: 'CityD' }; // Does not meet filter
-        const user5 = { _id: new ObjectId(), name: 'User5', age: 16, location: 'CityE' }; // Does not meet filter
-        const documents = [user1, user2, user3, user4, user5];
-        await collection.insertMany(documents, { writeConcern });
-
-        // Filter that includes documents based on age
-        const filter = { age: { $gt: 18 } };
-        const sort = { age: 1 }; // Sorting by age in ascending order
-        const projection = { name: 1, age: 1 }; // Projecting only name and age fields
-        const request = {
-            method: 'find',
-            params: {
-                db: DB_NAME,
-                collection: COLLECTION_NAME,
-                query: filter,
-                projection,
-                sort
-            }
-        };
-
-        const expectedInitialDocs = [user1, user2, user3].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })).sort((a, b) => a.age - b.age);
-
-        await retryOperation(async() => await axios.post(serverUrl, request),
-            response => JSON.stringify(response.data) === JSON.stringify(expectedInitialDocs),
-            RETRY_COUNT, SLEEP_WAIT_TIME);
-
-        // Initial query to cache the documents with projection and sorting
-        const initialResponse = await axios.post(serverUrl, request);
-
-        expect(initialResponse.data).toEqual(expectedInitialDocs);
-
-        // Update a document in a way that it no longer matches the filter
-        await collection.updateOne({ _id: user2._id }, { $set: { age: 18 } }, { writeConcern });
-
-        const expectedUpdatedDocs = [user1, user3].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })).sort((a, b) => a.age - b.age);
-
-        await retryOperation(async() => await axios.post(serverUrl, request),
-            response => JSON.stringify(response.data) === JSON.stringify(expectedUpdatedDocs),
-            RETRY_COUNT, SLEEP_WAIT_TIME);
-
-        // Query again to check if the cache reflects the updated document with projection and sorting
-        const updatedResponse = await axios.post(serverUrl, request);
-
-        // Check that user2 is no longer in the cache since it doesn't meet the filter criteria
-        expect(updatedResponse.data).toEqual(expectedUpdatedDocs);
-    });
-
-    test('Update Fields Resulting in Document Exclusion from Cache with Skip and Limit', async() => {
-        const COLLECTION_NAME = 'users';
-        const collection = client.db(DB_NAME).collection(COLLECTION_NAME);
-
-        // Insert initial documents, including some that do not meet the filter criteria
-        const user1 = { _id: new ObjectId(), name: 'User1', age: 20 };
-        const user2 = { _id: new ObjectId(), name: 'User2', age: 25 };
-        const user3 = { _id: new ObjectId(), name: 'User3', age: 30 };
-        const user4 = { _id: new ObjectId(), name: 'User4', age: 15 }; // Does not meet filter
-        const user5 = { _id: new ObjectId(), name: 'User5', age: 16 }; // Does not meet filter
-        const documents = [user1, user2, user3, user4, user5];
-        await collection.insertMany(documents, { writeConcern });
-
-        // Filter that includes documents based on age
-        const filter = { age: { $gt: 18 } };
-        const skip = 1; // Skip the first document
-        const limit = 2; // Limit to 2 documents
-        const request = {
-            method: 'find',
-            params: {
-                db: DB_NAME,
-                collection: COLLECTION_NAME,
-                query: filter,
-                skip,
-                limit
-            }
-        };
-
-        const expectedInitialDocs = [user2, user3].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })); // User1 is skipped
-        await retryOperation(async() => await axios.post(serverUrl, request),
-            response => JSON.stringify(response.data) === JSON.stringify(expectedInitialDocs),
-            RETRY_COUNT, SLEEP_WAIT_TIME);
-
-        // Initial query to cache the documents with skip and limit
-        const initialResponse = await axios.post(serverUrl, request);
-
-        expect(initialResponse.data).toEqual(expectedInitialDocs);
-
-        // Update a document in a way that it no longer matches the filter
-        await collection.updateOne({ _id: user2._id }, { $set: { age: 18 } }, { writeConcern });
-
-        const expectedUpdatedDocs = [user3].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })); // Only User3 should be returned
-
-        await retryOperation(async() => await axios.post(serverUrl, request),
-            response => JSON.stringify(response.data) === JSON.stringify(expectedUpdatedDocs),
-            RETRY_COUNT, SLEEP_WAIT_TIME);
-
-        // Query again to check if the cache reflects the updated document with skip and limit
-        const updatedResponse = await axios.post(serverUrl, request);
-
-        // Check that user2 is no longer in the cache since it doesn't meet the filter criteria
-        expect(updatedResponse.data).toEqual(expectedUpdatedDocs);
-    });
-
-    test('Update Document to Match Filter Criteria and Appear in Cache', async() => {
-        const COLLECTION_NAME = 'users';
-        const collection = client.db(DB_NAME).collection(COLLECTION_NAME);
-
-        // Insert initial documents
-        const user1 = { _id: new ObjectId(), name: 'User1', age: 20 };
-        const user2 = { _id: new ObjectId(), name: 'User2', age: 15 }; // Initially does not meet the filter criteria
-        const user3 = { _id: new ObjectId(), name: 'User3', age: 30 };
-        const documents = [user1, user2, user3];
-        await collection.insertMany(documents, { writeConcern });
-
-        // Filter that includes documents based on age
-        const filter = { age: { $gt: 18 } };
-        const request = {
-            method: 'find',
-            params: {
-                db: DB_NAME,
-                collection: COLLECTION_NAME,
-                query: filter
-            }
-        };
-
-        const expectedInitialDocs = [user1, user3].map(doc => JSON.parse(JSON.stringify(doc)));
-
-        await retryOperation(async() => await axios.post(serverUrl, request),
-            response => JSON.stringify(response.data) === JSON.stringify(expectedInitialDocs),
-            RETRY_COUNT, SLEEP_WAIT_TIME);
-
-        // Initial query to cache the documents that meet the filter criteria
-        const initialResponse = await axios.post(serverUrl, request);
-
-        expect(initialResponse.data).toEqual(expectedInitialDocs);
-
-        // Update user2 to match the filter criteria
-        await collection.updateOne({ _id: user2._id }, { $set: { age: 21 } }, { writeConcern });
-
-        const updatedUser2 = { ...user2, age: 21 };
-        const expectedUpdatedDocs = [user1, user3, updatedUser2].map(doc => JSON.parse(JSON.stringify(doc)));
-
-        await retryOperation(async() => await axios.post(serverUrl, request),
-            response => JSON.stringify(response.data) === JSON.stringify(expectedUpdatedDocs),
-            RETRY_COUNT, SLEEP_WAIT_TIME);
-
-        // Query again to check if the cache reflects the updated document
-        const updatedResponse = await axios.post(serverUrl, request);
-
-        // Check that user2 now appears in the cache
-        expect(updatedResponse.data).toEqual(expectedUpdatedDocs);
-    });
-
-    test('Update Document to Match Filter Criteria and Appear in Cache with Projection and Sorting', async() => {
-        const COLLECTION_NAME = 'users';
-        const collection = client.db(DB_NAME).collection(COLLECTION_NAME);
-
-        // Insert initial documents with an additional field
-        const user1 = { _id: new ObjectId(), name: 'User1', age: 20, location: 'CityA' };
-        const user2 = { _id: new ObjectId(), name: 'User2', age: 15, location: 'CityB' }; // Initially does not meet the filter criteria
-        const user3 = { _id: new ObjectId(), name: 'User3', age: 30, location: 'CityC' };
-        const documents = [user1, user2, user3];
-        await collection.insertMany(documents, { writeConcern });
-
-        // Filter that includes documents based on age, with projection and sorting
-        const filter = { age: { $gt: 18 } };
-        const projection = { name: 1, age: 1 }; // Projecting only name and age fields
-        const sort = { age: -1 }; // Sorting by age in descending order
-        const request = {
-            method: 'find',
-            params: {
-                db: DB_NAME,
-                collection: COLLECTION_NAME,
-                query: filter,
-                projection,
-                sort
-            }
-        };
-
-        const expectedInitialDocs = [user1, user3].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })).sort((a, b) => b.age - a.age);
-
-        await retryOperation(async() => await axios.post(serverUrl, request),
-            response => JSON.stringify(response.data) === JSON.stringify(expectedInitialDocs),
-            RETRY_COUNT, SLEEP_WAIT_TIME);
-
-        // Initial query to cache the documents with projection and sorting
-        const initialResponse = await axios.post(serverUrl, request);
-
-        expect(initialResponse.data).toEqual(expectedInitialDocs);
-
-        // Update user2 to match the filter criteria
-        await collection.updateOne({ _id: user2._id }, { $set: { age: 21 } }, { writeConcern });
-
-        const updatedUser2 = { _id: user2._id.toString(), name: user2.name, age: 21 };
-        const expectedUpdatedDocs = [user1, user3, updatedUser2].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })).sort((a, b) => b.age - a.age);
-
-        await retryOperation(async() => await axios.post(serverUrl, request),
-            response => JSON.stringify(response.data) === JSON.stringify(expectedUpdatedDocs),
-            RETRY_COUNT, SLEEP_WAIT_TIME);
-
-        // Query again to check if the cache reflects the updated document with projection and sorting
-        const updatedResponse = await axios.post(serverUrl, request);
-
-        // Check that user2 now appears in the cache
-        expect(updatedResponse.data).toEqual(expectedUpdatedDocs);
-    });
-
-    test('Update Document to Match Filter Criteria and Appear in Cache with Skip, Limit, and Sorting', async() => {
-        const COLLECTION_NAME = 'users';
-        const collection = client.db(DB_NAME).collection(COLLECTION_NAME);
-
-        // Insert initial documents
-        const user1 = { _id: new ObjectId(), name: 'User1', age: 20 };
-        const user2 = { _id: new ObjectId(), name: 'User2', age: 15 }; // Initially does not meet the filter criteria
-        const user3 = { _id: new ObjectId(), name: 'User3', age: 30 };
-        const user4 = { _id: new ObjectId(), name: 'User4', age: 35 }; // Additional user for skip and limit testing
-        const documents = [user1, user2, user3, user4];
-        await collection.insertMany(documents, { writeConcern });
-
-        // Filter that includes documents based on age, with skip, limit, and sorting
-        const filter = { age: { $gt: 18 } };
-        const skip = 1; // Skip the first document
-        const limit = 2; // Limit to 2 documents
-        const sort = { age: -1 }; // Sorting by age in descending order
-        const request = {
-            method: 'find',
-            params: {
-                db: DB_NAME,
-                collection: COLLECTION_NAME,
-                query: filter,
-                skip,
-                limit,
-                sort
-            }
-        };
-
-        const expectedInitialDocs = [user3, user1].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })); // User4 and User3 are included
-
-        await retryOperation(async() => await axios.post(serverUrl, request),
-            response => JSON.stringify(response.data) === JSON.stringify(expectedInitialDocs),
-            RETRY_COUNT, SLEEP_WAIT_TIME);
-
-        // Initial query to cache the documents with skip, limit, and sorting
-        const initialResponse = await axios.post(serverUrl, request);
-        expect(initialResponse.data).toEqual(expectedInitialDocs);
-
-        // Update user2 to match the filter criteria
-        await collection.updateOne({ _id: user2._id }, { $set: { age: 21 } }, { writeConcern });
-
-        // Check that user2 now appears in the cache
-        const updatedUser2 = { _id: user2._id.toString(), name: user2.name, age: 21 };
-        const expectedUpdatedDocs = [user3, updatedUser2].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })); // User4 and updated User2 should be returned
-
-        await retryOperation(async() => await axios.post(serverUrl, request),
-            response => JSON.stringify(response.data) === JSON.stringify(expectedUpdatedDocs),
-            RETRY_COUNT, SLEEP_WAIT_TIME);
-
-        // Query again to check if the cache reflects the updated document with skip, limit, and sorting
-        const updatedResponse = await axios.post(serverUrl, request);
-
-        expect(updatedResponse.data).toEqual(expectedUpdatedDocs);
-    });
-
-    test('Check for Newly Inserted Documents', async() => {
-        const COLLECTION_NAME = 'users';
-        const collection = client.db(DB_NAME).collection(COLLECTION_NAME);
-
-        // Pre-existing documents
-        const existingUser = { _id: new ObjectId(), name: 'Existing', age: 30 };
-        await collection.insertOne(existingUser, { writeConcern });
-
-        // Find documents by filter
-        const filter = { age: { $gt: 20 } };
-        const request = {
-            method: 'find',
-            params: {
-                db: DB_NAME,
-                collection: COLLECTION_NAME,
-                query: filter
-            }
-        };
-
-        const expectedInitialDocuments = [JSON.parse(JSON.stringify(existingUser))];
-
-        await retryOperation(async() => await axios.post(serverUrl, request),
-            response => JSON.stringify(response.data) === JSON.stringify(expectedInitialDocuments),
-            RETRY_COUNT, SLEEP_WAIT_TIME);
-
-        const initialResponse = await axios.post(serverUrl, request);
-        expect(initialResponse.data).toEqual(expectedInitialDocuments);
-
-        // Insert new documents, some of which match the filter
-        const newUser1 = { _id: new ObjectId(), name: 'NewUser1', age: 25 }; // This should match
-        const newUser2 = { _id: new ObjectId(), name: 'NewUser2', age: 18 }; // This should not match
-        const newUser3 = { _id: new ObjectId(), name: 'NewUser3', age: 30 }; // This should match
-        const newDocuments = [newUser1, newUser2, newUser3];
-        await collection.insertMany(newDocuments, { writeConcern });
-
-        const expectedUpdatedDocs = [existingUser, newUser1, newUser3].map(doc => JSON.parse(JSON.stringify(doc)));
-
-        await retryOperation(async() => await axios.post(serverUrl, request),
-            response => JSON.stringify(response.data) === JSON.stringify(expectedUpdatedDocs),
-            RETRY_COUNT, SLEEP_WAIT_TIME);
-
-        // Check that only the new documents matching the filter are returned
-        const updatedResponse = await axios.post(serverUrl, request);
-        expect(updatedResponse.data).toEqual(expectedUpdatedDocs);
-    });
-
-    test('Check for Newly Inserted Documents with Projection and Sorting', async() => {
-        const COLLECTION_NAME = 'users';
-        const collection = client.db(DB_NAME).collection(COLLECTION_NAME);
-
-        // Pre-existing documents with an additional field
-        const existingUser = { _id: new ObjectId(), name: 'Existing', age: 30, location: 'CityA' };
-        await collection.insertOne(existingUser, { writeConcern });
-
-        // Find documents by filter with projection and sorting
-        const filter = { age: { $gt: 20 } };
-        const projection = { name: 1, age: 1 }; // Projecting only name and age fields
-        const sort = { age: -1 }; // Sorting by age in descending order
-        const request = {
-            method: 'find',
-            params: {
-                db: DB_NAME,
-                collection: COLLECTION_NAME,
-                query: filter,
-                projection,
-                sort
-            }
-        };
-
-        const expectedInitialDocs = [{ _id: existingUser._id.toString(), name: existingUser.name, age: existingUser.age }];
-        await retryOperation(async() => await axios.post(serverUrl, request),
-            response => JSON.stringify(response.data) === JSON.stringify(expectedInitialDocs),
-            RETRY_COUNT, SLEEP_WAIT_TIME);
-
-        const initialResponse = await axios.post(serverUrl, request);
-
-        expect(initialResponse.data).toEqual(expectedInitialDocs);
-
-        // Insert new documents, some of which match the filter
-        const newUser1 = { _id: new ObjectId(), name: 'NewUser1', age: 25, location: 'CityB' }; // This should match
-        const newUser2 = { _id: new ObjectId(), name: 'NewUser2', age: 18, location: 'CityC' }; // This should not match
-        const newUser3 = { _id: new ObjectId(), name: 'NewUser3', age: 31, location: 'CityD' }; // This should match
-        const newDocuments = [newUser1, newUser2, newUser3];
-        await collection.insertMany(newDocuments, { writeConcern });
-
-        const expectedUpdatedDocs = [existingUser, newUser1, newUser3].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })).sort((a, b) => b.age - a.age);
-        await retryOperation(async() => await axios.post(serverUrl, request),
-            response => JSON.stringify(response.data) === JSON.stringify(expectedUpdatedDocs),
-            RETRY_COUNT, SLEEP_WAIT_TIME);
-
-        // Check that only the new documents matching the filter are returned
-        const updatedResponse = await axios.post(serverUrl, request);
-
-        expect(updatedResponse.data).toEqual(expectedUpdatedDocs);
-    });
-
-    test('Check for Newly Inserted Documents with Skip and Limit', async() => {
-        const COLLECTION_NAME = 'users';
-        const collection = client.db(DB_NAME).collection(COLLECTION_NAME);
-
-        // Pre-existing documents
-        const existingUser = { _id: new ObjectId(), name: 'Existing', age: 30 };
-        await collection.insertOne(existingUser, { writeConcern });
-
-        // Find documents by filter with skip and limit
-        const filter = { age: { $gt: 20 } };
-        const skip = 1; // Skip the first document
-        const limit = 1; // Limit to 1 document
-        const request = {
-            method: 'find',
-            params: {
-                db: DB_NAME,
-                collection: COLLECTION_NAME,
-                query: filter,
-                skip,
-                limit
-            }
-        };
-
-        const expectedInitialDocs: User[] = [];
-
-        await retryOperation(async() => await axios.post(serverUrl, request),
-            response => JSON.stringify(response.data) === JSON.stringify(expectedInitialDocs),
-            RETRY_COUNT, SLEEP_WAIT_TIME);
-
-        const initialResponse = await axios.post(serverUrl, request);
-        // Expect no documents initially since the limit is 1 and we are skipping the existing user
-        expect(initialResponse.data).toEqual([]);
-
-        // Insert new documents, some of which match the filter
-        const newUser1 = { _id: new ObjectId(), name: 'NewUser1', age: 25 }; // This should match
-        const newUser2 = { _id: new ObjectId(), name: 'NewUser2', age: 18 }; // This should not match
-        const newUser3 = { _id: new ObjectId(), name: 'NewUser3', age: 31 }; // This should match
-        const newDocuments = [newUser1, newUser2, newUser3];
-        await collection.insertMany(newDocuments, { writeConcern });
-
-        const expectedDocument = [{ _id: newUser1._id.toString(), name: newUser1.name, age: newUser1.age }];
-
-        await retryOperation(async() => await axios.post(serverUrl, request),
-            response => JSON.stringify(response.data) === JSON.stringify(expectedDocument),
-            RETRY_COUNT, SLEEP_WAIT_TIME);
-
-        // Check that only the new documents matching the filter are returned
-        const updatedResponse = await axios.post(serverUrl, request);
-        // Expect newUser1 to be the one returned since it's the second document matching the filter
-
-        expect(updatedResponse.data).toEqual(expectedDocument);
-    });
-
-    test('Check Cache After Deleting a Specific Document', async() => {
-        const COLLECTION_NAME = 'users';
-        const collection = client.db(DB_NAME).collection(COLLECTION_NAME);
-
-        // Insert multiple documents, including the one to be deleted
-        const userToDelete = { _id: new ObjectId(), name: 'UserToDelete', age: 40 };
-        const otherUser1 = { _id: new ObjectId(), name: 'OtherUser1', age: 25 };
-        const otherUser2 = { _id: new ObjectId(), name: 'OtherUser2', age: 30 };
-        const documents = [userToDelete, otherUser1, otherUser2];
-        await collection.insertMany(documents, { writeConcern });
-
-        // Perform a query to ensure all documents are cached
-        const filterForCache = {};
-        const request = {
-            method: 'find',
-            params: {
-                db: DB_NAME,
-                collection: COLLECTION_NAME,
-                query: filterForCache
-            }
-        };
-
-        const expectedInitialDocs = documents.map(doc => JSON.parse(JSON.stringify(doc)));
-
-        await retryOperation(async() => await axios.post(serverUrl, request),
-            response => JSON.stringify(response.data) === JSON.stringify(expectedInitialDocs),
-            RETRY_COUNT, SLEEP_WAIT_TIME);
-
-        const initialResponse = await axios.post(serverUrl, request);
-        expect(initialResponse.data).toEqual(expectedInitialDocs);
-
-        // Delete the specific document
-        await collection.deleteOne({ _id: userToDelete._id }, { writeConcern });
-
-        const expectedUpdatedDocs = [otherUser1, otherUser2].map(doc => JSON.parse(JSON.stringify(doc)));
-
-        // Query again to check if the cache has been updated correctly
-        const updatedResponse = await axios.post(serverUrl, request);
-
-        await retryOperation(async() => await axios.post(serverUrl, request),
-            response => JSON.stringify(response.data) === JSON.stringify(expectedUpdatedDocs),
-            RETRY_COUNT, SLEEP_WAIT_TIME);
-
-        // Expect the cache to return all documents except the deleted one
-        expect(updatedResponse.data).toEqual(expectedUpdatedDocs);
-    });
-
-    test('Check Cache After Deleting a Specific Document with Projection and Sorting', async() => {
-        const COLLECTION_NAME = 'users';
-        const collection = client.db(DB_NAME).collection(COLLECTION_NAME);
-
-        // Insert multiple documents, including the one to be deleted, with an additional field
-        const userToDelete = { _id: new ObjectId(), name: 'UserToDelete', age: 40, location: 'CityA' };
-        const otherUser1 = { _id: new ObjectId(), name: 'OtherUser1', age: 25, location: 'CityB' };
-        const otherUser2 = { _id: new ObjectId(), name: 'OtherUser2', age: 30, location: 'CityC' };
-        const documents = [userToDelete, otherUser1, otherUser2];
-        await collection.insertMany(documents, { writeConcern });
-
-        // Perform a query with projection and sorting to ensure all documents are cached
-        const filterForCache = {};
-        const projection = { name: 1, age: 1 }; // Projecting only name and age fields
-        const sort = { age: -1 }; // Sorting by age in descending order
-        const request = {
-            method: 'find',
-            params: {
-                db: DB_NAME,
-                collection: COLLECTION_NAME,
-                query: filterForCache,
-                projection,
-                sort
-            }
-        };
-
-        const expectedInitialDocs = documents.map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })).sort((a, b) => b.age - a.age);
-
-        await retryOperation(async() => await axios.post(serverUrl, request),
-            response => JSON.stringify(response.data) === JSON.stringify(expectedInitialDocs),
-            RETRY_COUNT, SLEEP_WAIT_TIME);
-
-        const initialResponse = await axios.post(serverUrl, request);
-
-        expect(initialResponse.data).toEqual(expectedInitialDocs);
-
-        // Delete the specific document
-        await collection.deleteOne({ _id: userToDelete._id }, { writeConcern });
-
-        const expectedUpdatedDocs = [otherUser1, otherUser2].map(doc => ({ _id: doc._id.toString(), name: doc.name, age: doc.age })).sort((a, b) => b.age - a.age);
-
-        await retryOperation(async() => await axios.post(serverUrl, request),
-            response => JSON.stringify(response.data) === JSON.stringify(expectedUpdatedDocs),
-            RETRY_COUNT, SLEEP_WAIT_TIME);
-
-        // Query again to check if the cache has been updated correctly
-        const updatedResponse = await axios.post(serverUrl, request);
-
-        // Expect the cache to return all documents except the deleted one, with projection and sorting applied
-        expect(updatedResponse.data).toEqual(expectedUpdatedDocs);
-    });
-
-    test('Check Cache After Deleting a Specific Document with Skip, Limit, and Sorting', async() => {
-        const COLLECTION_NAME = 'users';
-        const collection = client.db(DB_NAME).collection(COLLECTION_NAME);
-
-        // Insert multiple documents, including the one to be deleted
-        const userToDelete = { _id: new ObjectId(), name: 'UserToDelete', age: 40 };
-        const otherUser1 = { _id: new ObjectId(), name: 'OtherUser1', age: 25 };
-        const otherUser2 = { _id: new ObjectId(), name: 'OtherUser2', age: 30 };
-        const documents = [userToDelete, otherUser1, otherUser2];
-        await collection.insertMany(documents, { writeConcern });
-
-        // Perform a query with skip, limit, and sorting to ensure all documents are cached
-        const filterForCache = {};
-        const skip = 1; // Skip the first document
-        const limit = 1; // Limit to 1 document
-        const sort = { age: 1 }; // Sorting by age in ascending order
-        const request = {
-            method: 'find',
-            params: {
-                db: DB_NAME,
-                collection: COLLECTION_NAME,
-                query: filterForCache,
-                skip,
-                limit,
-                sort
-            }
-        };
-
-        const expectedInitialDocs = [otherUser2].map(doc => JSON.parse(JSON.stringify(doc)));
-
-        await retryOperation(async() => await axios.post(serverUrl, request),
-            response => JSON.stringify(response.data) === JSON.stringify(expectedInitialDocs),
-            RETRY_COUNT, SLEEP_WAIT_TIME);
-
-        const initialResponse = await axios.post(serverUrl, request);
-
-        // Expect to return only the second document in sorted order
-        expect(initialResponse.data).toEqual(expectedInitialDocs);
-
-        // Delete the specific document
-        await collection.deleteOne({ _id: userToDelete._id }, { writeConcern });
-
-        await retryOperation(async() => await axios.post(serverUrl, request),
-            response => JSON.stringify(response.data) === JSON.stringify(expectedInitialDocs),
-            RETRY_COUNT, SLEEP_WAIT_TIME);
-
-        // Query again to check if the cache has been updated correctly
-        const updatedResponse = await axios.post(serverUrl, request);
-
-        // Expect the cache to return the same document as before since the deleted one was not in the initial result set
-        expect(updatedResponse.data).toEqual(expectedInitialDocs);
+    interface FindParams {
+        db: string
+        collection: string
+        query: Document
+        projection?: Document
+        skip?: number
+        limit?: number
+        sort?: Document
+        ttl?: number
+    }
+
+    interface FindRequest {
+        method: 'find'
+        params: FindParams
+    }
+
+    interface IntegrationTestCase {
+        name: string
+        documentsToInsert: User[]
+        initialDocuments: User[]
+        findParams: FindParams
+        modifyAction: (collection: Collection) => Promise<void>
+        expectedDocuments: User[]
+    }
+
+    const defaultFindParams = {
+        db: DB_NAME,
+        collection: 'users'
+    };
+
+    function projectAndSortUsers(users: User[], projection: Record<string, number>, sort: Record<string, number>): User[] {
+        return users
+            .sort((a: Record<string, any>, b: Record<string, any>) => {
+                return Object.entries(sort).reduce((compareResult, [field, dir]) =>
+                    compareResult === 0 ? ((a[field] ?? 0) - (b[field] ?? 0)) * dir : compareResult
+                , 0);
+            })
+            .map(user => Object.fromEntries(Object.entries(user).filter(([field, _]) => projection[field] === 1 || field === '_id')) as User);
+    }
+
+    const integrationTests: IntegrationTestCase[] = [
+        ((): IntegrationTestCase => {
+            const john: User = { _id: new ObjectId(), name: 'John', age: 10 };
+            const jane: User = { _id: new ObjectId(), name: 'Jane', age: 15 };
+            const query = { name: 'John' };
+            return {
+                name: 'Update Fields Not in the Filter',
+                documentsToInsert: [john, jane],
+                findParams: {
+                    ...defaultFindParams,
+                    query
+                },
+                initialDocuments: [john],
+                modifyAction: async(collection: Collection) => {
+                    await collection.updateOne(query, { $set: { age: 5 } }, { writeConcern });
+                },
+                expectedDocuments: [Object.assign({}, john, { age: 5 })]
+            };
+        })(),
+        ((): IntegrationTestCase => {
+            const john = { _id: new ObjectId(), name: 'John', age: 10, location: 'CityA' };
+            const jane = { _id: new ObjectId(), name: 'Jane', age: 15, location: 'CityB' };
+            const query = { name: 'John' };
+            const projection = { name: 1, age: 1 };
+            const sort = { age: -1 };
+            const projectedJohn = {
+                _id: john._id,
+                name: john.name,
+                age: john.age
+            };
+            return {
+                name: 'Update Fields Not in the Filter with Sort and Projection',
+                documentsToInsert: [john, jane],
+                findParams: {
+                    ...defaultFindParams,
+                    query,
+                    projection,
+                    sort
+                },
+                initialDocuments: [projectedJohn],
+                modifyAction: async(collection: Collection) => {
+                    await collection.updateOne(query, { $set: { age: 5 } }, { writeConcern });
+                },
+                expectedDocuments: [{
+                    ...projectedJohn,
+                    age: 5
+                }]
+            };
+        })(),
+        ((): IntegrationTestCase => {
+            const users = [
+                { _id: new ObjectId(), name: 'John', age: 10 },
+                { _id: new ObjectId(), name: 'Jane', age: 15 },
+                { _id: new ObjectId(), name: 'Jim', age: 20 },
+                { _id: new ObjectId(), name: 'Jill', age: 25 },
+                { _id: new ObjectId(), name: 'Jack', age: 30 }
+            ];
+            const updatedUser = { ...users[1], age: 16 };
+            return {
+                name: 'Update Fields Not in the Filter with Skip and Limit',
+                documentsToInsert: users,
+                findParams: {
+                    ...defaultFindParams,
+                    query: { name: { $in: ['John', 'Jane', 'Jim', 'Jill', 'Jack'] } },
+                    skip: 1,
+                    limit: 2
+                },
+                initialDocuments: [
+                    JSON.parse(JSON.stringify(users[1])),
+                    JSON.parse(JSON.stringify(users[2]))
+                ],
+                modifyAction: async(collection: Collection) => {
+                    await collection.updateOne({ _id: updatedUser._id }, { $set: { age: updatedUser.age } }, { writeConcern });
+                },
+                expectedDocuments: [
+                    JSON.parse(JSON.stringify(updatedUser)),
+                    JSON.parse(JSON.stringify(users[2]))
+                ]
+
+            };
+        })(),
+        ((): IntegrationTestCase => {
+            const user1 = { _id: new ObjectId(), name: 'User1', age: 20 };
+            const user2 = { _id: new ObjectId(), name: 'User2', age: 25 };
+            const user3 = { _id: new ObjectId(), name: 'User3', age: 30 };
+            const users = [user1, user2, user3];
+            const updatedUser2 = { ...user2, age: 27 };
+            return {
+                name: 'Update Fields in the Filter',
+                documentsToInsert: users,
+                findParams: {
+                    ...defaultFindParams,
+                    query: { age: { $gt: 18 } }
+                },
+                initialDocuments: users,
+                modifyAction: async(collection: Collection) => {
+                    await collection.updateOne({ _id: updatedUser2._id }, { $set: { age: updatedUser2.age } }, { writeConcern });
+                },
+                expectedDocuments: [user1, updatedUser2, user3]
+            };
+        })(),
+        ((): IntegrationTestCase => {
+            const user1 = { _id: new ObjectId(), name: 'User1', age: 20, location: 'CityA' };
+            const user2 = { _id: new ObjectId(), name: 'User2', age: 25, location: 'CityB' };
+            const user3 = { _id: new ObjectId(), name: 'User3', age: 30, location: 'CityC' };
+            const user4 = { _id: new ObjectId(), name: 'User4', age: 15, location: 'CityD' }; // Does not meet filter
+            const user5 = { _id: new ObjectId(), name: 'User5', age: 16, location: 'CityE' }; // Does not meet filter
+            const users = [user1, user2, user3, user4, user5];
+            const updatedUser2 = { ...user2, age: 27 };
+            const projection = { name: 1, age: 1 };
+            const sort = { age: 1 };
+            return {
+                name: 'Update Fields in the Filter with Projection and Sorting',
+                documentsToInsert: users,
+                findParams: {
+                    ...defaultFindParams,
+                    query: { age: { $gt: 18 } },
+                    sort,
+                    projection
+                },
+                initialDocuments: projectAndSortUsers([user1, user2, user3], projection, sort),
+                modifyAction: async(collection: Collection) => {
+                    await collection.updateOne({ _id: updatedUser2._id }, { $set: { age: updatedUser2.age } }, { writeConcern });
+                },
+                expectedDocuments: projectAndSortUsers([user1, updatedUser2, user3], projection, sort)
+            };
+        })(),
+        ((): IntegrationTestCase => {
+            const user1 = { _id: new ObjectId(), name: 'User1', age: 20, location: 'CityA' };
+            const user2 = { _id: new ObjectId(), name: 'User2', age: 25, location: 'CityB' };
+            const user3 = { _id: new ObjectId(), name: 'User3', age: 30, location: 'CityC' };
+            const user4 = { _id: new ObjectId(), name: 'User4', age: 15, location: 'CityD' }; // Does not meet filter
+            const user5 = { _id: new ObjectId(), name: 'User5', age: 16, location: 'CityE' }; // Does not meet filter
+            const users = [user1, user2, user3, user4, user5];
+            const updatedUser2 = { ...user2, age: 27 };
+            return {
+                name: 'Update Fields in the Filter with Skip and Limit',
+                documentsToInsert: users,
+                findParams: {
+                    ...defaultFindParams,
+                    query: { age: { $gt: 18 } },
+                    skip: 1,
+                    limit: 2
+                },
+                initialDocuments: [user2, user3],
+                modifyAction: async(collection: Collection) => {
+                    await collection.updateOne({ _id: updatedUser2._id }, { $set: { age: updatedUser2.age } }, { writeConcern });
+                },
+                expectedDocuments: [updatedUser2, user3]
+            };
+        })(),
+        ((): IntegrationTestCase => {
+            const user1 = { _id: new ObjectId(), name: 'User1', age: 20 };
+            const user2 = { _id: new ObjectId(), name: 'User2', age: 25 };
+            const user3 = { _id: new ObjectId(), name: 'User3', age: 30 };
+            const users = [user1, user2, user3];
+            const updatedUser2 = { ...user2, age: 18 };
+            return {
+                name: 'Update Fields Resulting in Document Exclusion from Cache',
+                documentsToInsert: users,
+                findParams: {
+                    ...defaultFindParams,
+                    query: { age: { $gt: 18 } }
+                },
+                initialDocuments: users,
+                modifyAction: async(collection: Collection) => {
+                    await collection.updateOne({ _id: updatedUser2._id }, { $set: { age: updatedUser2.age } }, { writeConcern });
+                },
+                expectedDocuments: [user1, user3]
+            };
+        })(),
+        ((): IntegrationTestCase => {
+            const user1 = { _id: new ObjectId(), name: 'User1', age: 20, location: 'CityA' };
+            const user2 = { _id: new ObjectId(), name: 'User2', age: 25, location: 'CityB' };
+            const user3 = { _id: new ObjectId(), name: 'User3', age: 30, location: 'CityC' };
+            const user4 = { _id: new ObjectId(), name: 'User4', age: 15, location: 'CityD' }; // Does not meet filter
+            const user5 = { _id: new ObjectId(), name: 'User5', age: 16, location: 'CityE' }; // Does not meet filter
+            const users = [user1, user2, user3, user4, user5];
+            const updatedUser2 = { ...user2, age: 18 };
+            const sort = { age: 1 };
+            const projection = { name: 1, age: 1 };
+
+            return {
+                name: 'Update Fields Resulting in Document Exclusion from Cache with Projection and Sorting',
+                documentsToInsert: users,
+                findParams: {
+                    ...defaultFindParams,
+                    query: { age: { $gt: 18 } },
+                    projection,
+                    sort
+                },
+                initialDocuments: projectAndSortUsers([user1, user2, user3], projection, sort),
+                modifyAction: async(collection: Collection) => {
+                    await collection.updateOne({ _id: updatedUser2._id }, { $set: { age: updatedUser2.age } }, { writeConcern });
+                },
+                expectedDocuments: projectAndSortUsers([user1, user3], projection, sort)
+            };
+        })(),
+        ((): IntegrationTestCase => {
+            const user1 = { _id: new ObjectId(), name: 'User1', age: 20, location: 'CityA' };
+            const user2 = { _id: new ObjectId(), name: 'User2', age: 25, location: 'CityB' };
+            const user3 = { _id: new ObjectId(), name: 'User3', age: 30, location: 'CityC' };
+            const user4 = { _id: new ObjectId(), name: 'User4', age: 15, location: 'CityD' }; // Does not meet filter
+            const user5 = { _id: new ObjectId(), name: 'User5', age: 16, location: 'CityE' }; // Does not meet filter
+            const users = [user1, user2, user3, user4, user5];
+            const updatedUser2 = { ...user2, age: 18 };
+            return {
+                name: 'Update Fields Resulting in Document Exclusion from Cache with Skip and Limit',
+                documentsToInsert: users,
+                findParams: {
+                    ...defaultFindParams,
+                    query: { age: { $gt: 18 } },
+                    skip: 1,
+                    limit: 2
+                },
+                initialDocuments: [user2, user3],
+                modifyAction: async(collection: Collection) => {
+                    await collection.updateOne({ _id: updatedUser2._id }, { $set: { age: updatedUser2.age } }, { writeConcern });
+                },
+                expectedDocuments: [user3]
+            };
+        })(),
+        ((): IntegrationTestCase => {
+            const user1 = { _id: new ObjectId(), name: 'User1', age: 20 };
+            const user2 = { _id: new ObjectId(), name: 'User2', age: 15 }; // Initially does not meet the filter criteria
+            const user3 = { _id: new ObjectId(), name: 'User3', age: 30 };
+            const users = [user1, user2, user3];
+            const updatedUser2 = { ...user2, age: 21 };
+            return {
+                name: 'Update Document to Match Filter Criteria and Appear in Cache',
+                documentsToInsert: users,
+                findParams: {
+                    ...defaultFindParams,
+                    query: { age: { $gt: 18 } }
+                },
+                initialDocuments: [user1, user3],
+                modifyAction: async(collection: Collection) => {
+                    await collection.updateOne({ _id: updatedUser2._id }, { $set: { age: updatedUser2.age } }, { writeConcern });
+                },
+                expectedDocuments: [user1, user3, updatedUser2]
+            };
+        })(),
+        ((): IntegrationTestCase => {
+            const user1 = { _id: new ObjectId(), name: 'User1', age: 20, location: 'CityA' };
+            const user2 = { _id: new ObjectId(), name: 'User2', age: 15, location: 'CityB' }; // Initially does not meet the filter criteria
+            const user3 = { _id: new ObjectId(), name: 'User3', age: 30, location: 'CityC' };
+            const users = [user1, user2, user3];
+            const updatedUser2 = { ...user2, age: 21 };
+            const projection = { name: 1, age: 1 };
+            const sort = { age: 1 };
+            return {
+                name: 'Update Document to Match Filter Criteria and Appear in Cache with Projection and Sorting',
+                documentsToInsert: users,
+                findParams: {
+                    ...defaultFindParams,
+                    query: { age: { $gt: 18 } },
+                    projection,
+                    sort
+                },
+                initialDocuments: projectAndSortUsers([user1, user3], projection, sort),
+                modifyAction: async(collection: Collection) => {
+                    await collection.updateOne({ _id: updatedUser2._id }, { $set: { age: updatedUser2.age } }, { writeConcern });
+                },
+                expectedDocuments: projectAndSortUsers([user1, user3, updatedUser2], projection, sort)
+            };
+        })(),
+        ((): IntegrationTestCase => {
+            const user1 = { _id: new ObjectId(), name: 'User1', age: 20 };
+            const user2 = { _id: new ObjectId(), name: 'User2', age: 15 }; // Initially does not meet the filter criteria
+            const user3 = { _id: new ObjectId(), name: 'User3', age: 30 };
+            const user4 = { _id: new ObjectId(), name: 'User4', age: 35 }; // Additional user for skip and limit testing
+            const users = [user1, user2, user3, user4];
+            const updatedUser2 = { ...user2, age: 21 };
+            const projection = { name: 1, age: 1 };
+            const sort = { age: -1 };
+            return {
+                name: 'Update Document to Match Filter Criteria and Appear in Cache with Skip, Limit, and Sorting',
+                documentsToInsert: users,
+                findParams: {
+                    ...defaultFindParams,
+                    query: { age: { $gt: 18 } },
+                    skip: 1,
+                    limit: 2,
+                    sort
+                },
+                initialDocuments: [user3, user1],
+                modifyAction: async(collection: Collection) => {
+                    await collection.updateOne({ _id: updatedUser2._id }, { $set: { age: updatedUser2.age } }, { writeConcern });
+                },
+                expectedDocuments: [user3, updatedUser2]
+            };
+        })(),
+        ((): IntegrationTestCase => {
+            const user1 = { _id: new ObjectId(), name: 'User1', age: 20 };
+            const user2 = { _id: new ObjectId(), name: 'User2', age: 21 };
+            const user3 = { _id: new ObjectId(), name: 'User3', age: 15 };
+            const user4 = { _id: new ObjectId(), name: 'User4', age: 35 };
+            return {
+                name: 'Check for Newly Inserted Documents',
+                documentsToInsert: [user1],
+                findParams: {
+                    ...defaultFindParams,
+                    query: { age: { $gt: 18 } }
+                },
+                initialDocuments: [user1],
+                modifyAction: async(collection: Collection) => {
+                    await collection.insertMany([user2, user3, user4], { writeConcern });
+                },
+                expectedDocuments: [user1, user2, user4]
+            };
+        })(),
+        ((): IntegrationTestCase => {
+            const user1 = { _id: new ObjectId(), name: 'User1', age: 20, location: 'CityA' };
+            const user2 = { _id: new ObjectId(), name: 'User2', age: 21, location: 'CityB' };
+            const user3 = { _id: new ObjectId(), name: 'User3', age: 15, location: 'CityC' };
+            const user4 = { _id: new ObjectId(), name: 'User4', age: 35, location: 'CityD' };
+            const projection = { name: 1, age: 1 };
+            const sort = { age: -1 };
+            return {
+                name: 'Check for Newly Inserted Documents with Projection and Sorting',
+                documentsToInsert: [user1],
+                findParams: {
+                    ...defaultFindParams,
+                    query: { age: { $gt: 18 } },
+                    projection,
+                    sort
+                },
+                initialDocuments: projectAndSortUsers([user1], projection, sort),
+                modifyAction: async(collection: Collection) => {
+                    await collection.insertMany([user2, user3, user4], { writeConcern });
+                },
+                expectedDocuments: projectAndSortUsers([user1, user2, user4], projection, sort)
+            };
+        })(),
+        ((): IntegrationTestCase => {
+            const user1 = { _id: new ObjectId(), name: 'User1', age: 20 };
+            const user2 = { _id: new ObjectId(), name: 'User2', age: 21 };
+            const user3 = { _id: new ObjectId(), name: 'User3', age: 15 };
+            const user4 = { _id: new ObjectId(), name: 'User4', age: 35 };
+            return {
+                name: 'Check for Newly Inserted Documents with Skip and Limit',
+                documentsToInsert: [user1],
+                findParams: {
+                    ...defaultFindParams,
+                    query: { age: { $gt: 18 } },
+                    skip: 1,
+                    limit: 1
+                },
+                initialDocuments: [],
+                modifyAction: async(collection: Collection) => {
+                    await collection.insertMany([user2, user3, user4], { writeConcern });
+                },
+                expectedDocuments: [user2]
+            };
+        })(),
+        ((): IntegrationTestCase => {
+            const user1 = { _id: new ObjectId(), name: 'User1', age: 20 };
+            const user2 = { _id: new ObjectId(), name: 'User2', age: 21 };
+            const user3 = { _id: new ObjectId(), name: 'User3', age: 15 };
+            return {
+                name: 'Check Cache After Deleting a Specific Document',
+                documentsToInsert: [user1, user2, user3],
+                findParams: {
+                    ...defaultFindParams,
+                    query: {}
+                },
+                initialDocuments: [user1, user2, user3],
+                modifyAction: async(collection: Collection) => {
+                    await collection.deleteOne({ _id: user1._id }, { writeConcern });
+                },
+                expectedDocuments: [user2, user3]
+            };
+        })(),
+        ((): IntegrationTestCase => {
+            const user1 = { _id: new ObjectId(), name: 'User1', age: 20, location: 'CityA' };
+            const user2 = { _id: new ObjectId(), name: 'User2', age: 21, location: 'CityB' };
+            const user3 = { _id: new ObjectId(), name: 'User3', age: 15, location: 'CityC' };
+            const projection = { name: 1, age: 1 };
+            const sort = { age: -1 };
+
+            return {
+                name: 'Check Cache After Deleting a Specific Document with Projection and Sorting',
+                documentsToInsert: [user1, user2, user3],
+                findParams: {
+                    ...defaultFindParams,
+                    query: {},
+                    projection,
+                    sort
+                },
+                initialDocuments: projectAndSortUsers([user1, user2, user3], projection, sort),
+                modifyAction: async(collection: Collection) => {
+                    await collection.deleteOne({ _id: user1._id }, { writeConcern });
+                },
+                expectedDocuments: projectAndSortUsers([user2, user3], projection, sort)
+            };
+        })(),
+        ((): IntegrationTestCase => {
+            const user1 = { _id: new ObjectId(), name: 'User1', age: 20 };
+            const user2 = { _id: new ObjectId(), name: 'User2', age: 21 };
+            const user3 = { _id: new ObjectId(), name: 'User3', age: 15 };
+            const sort = { age: 1 };
+            return {
+                name: 'Check Cache After Deleting a Specific Document with Skip, Limit, and Sorting',
+                documentsToInsert: [user1, user2, user3],
+                findParams: {
+                    ...defaultFindParams,
+                    query: {},
+                    skip: 1,
+                    limit: 1,
+                    sort
+                },
+                initialDocuments: [user1],
+                modifyAction: async(collection: Collection) => {
+                    await collection.deleteOne({ _id: user1._id }, { writeConcern });
+                },
+                expectedDocuments: [user2]
+            };
+        })()
+
+    ];
+
+    integrationTests.forEach((integrationTest) => {
+        test(integrationTest.name, async() => {
+            const collection = client.db(DB_NAME).collection('users');
+            await collection.insertMany(integrationTest.documentsToInsert, { writeConcern });
+
+            const request = {
+                method: 'find',
+                params: integrationTest.findParams
+            };
+
+            // retry find several times until the documents have reached the cache
+            await retryOperation(async() => await axios.post(serverUrl, request),
+                response => JSON.stringify(response.data) === JSON.stringify(integrationTest.initialDocuments),
+                RETRY_COUNT, SLEEP_WAIT_TIME);
+
+            const response = await axios.post(serverUrl, request);
+
+            // Check response is correct
+            expect(response.data).toEqual(JSON.parse(JSON.stringify(integrationTest.initialDocuments)));
+
+            await integrationTest.modifyAction(collection);
+
+            const expectedDocuments = integrationTest.expectedDocuments;
+
+            // retry find several times until the updates have reached the cache
+            await retryOperation(async() => await axios.post(serverUrl, request),
+                response => JSON.stringify(response.data) === JSON.stringify(expectedDocuments),
+                RETRY_COUNT, SLEEP_WAIT_TIME);
+
+            const updatedResponse = await axios.post(serverUrl, request);
+
+            // Check the update has been reflected in the cache
+            expect(updatedResponse.data).toEqual(JSON.parse(JSON.stringify(expectedDocuments)));
+        });
     });
 });
