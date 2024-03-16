@@ -32,3 +32,10 @@ jobs:
         with:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
+      - name: Update Docker Hub Description
+        uses: peter-evans/dockerhub-description@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_ACCESS_TOKEN }}
+          repository: ktekosi/mongo-stream-sight
+          readme-filepath: './Dockerimage-description.md'
