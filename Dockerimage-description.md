@@ -43,7 +43,7 @@ Accessing the `/status` endpoint provides a JSON response containing information
 Before you begin, ensure you have Docker installed and running on your machine. To start the MongoStreamSight Docker image with the necessary environment variables set, use the following command in your terminal:
 
 ```sh
-docker run -d --name mongostreamsight -e MONGO_URI='mongodb://user:password@server1/admin?replicaSet=rs0' -e PORT=8080 -p 8080:8080 ktekosi/mongostreamsight
+docker run -d --name mongostreamsight -e MONGO_URI='mongodb://user:password@server1/admin?replicaSet=rs0' -e PORT=8080 -p 8080:8080 ktekosi/mongo-stream-sight
 ```
 
 Set MONGO_URI to your actual MongoDB connection URI. Adjust the `PORT` value as needed or omit it to use the default port (8000).
