@@ -552,13 +552,13 @@ describe('Server Integration Tests', () => {
 
             // retry find several times until the documents have reached the cache
             await retryOperation(async() => await axios.post(serverUrl, request),
-                response => JSON.stringify(response.data) === JSON.stringify(integrationTest.initialDocuments),
+                response => JSON.stringify(response.data.result ?? undefined) === JSON.stringify(integrationTest.initialDocuments),
                 RETRY_COUNT, SLEEP_WAIT_TIME);
 
             const response = await axios.post(serverUrl, request);
 
             // Check response is correct
-            expect(response.data).toEqual(JSON.parse(JSON.stringify(integrationTest.initialDocuments)));
+            expect(response.data.result ?? undefined).toEqual(JSON.parse(JSON.stringify(integrationTest.initialDocuments)));
 
             await integrationTest.modifyAction(collection);
 
@@ -566,13 +566,13 @@ describe('Server Integration Tests', () => {
 
             // retry find several times until the updates have reached the cache
             await retryOperation(async() => await axios.post(serverUrl, request),
-                response => JSON.stringify(response.data) === JSON.stringify(expectedDocuments),
+                response => JSON.stringify(response.data.result ?? undefined) === JSON.stringify(expectedDocuments),
                 RETRY_COUNT, SLEEP_WAIT_TIME);
 
             const updatedResponse = await axios.post(serverUrl, request);
 
             // Check the update has been reflected in the cache
-            expect(updatedResponse.data).toEqual(JSON.parse(JSON.stringify(expectedDocuments)));
+            expect(updatedResponse.data.result ?? undefined).toEqual(JSON.parse(JSON.stringify(expectedDocuments)));
         });
     });
 });

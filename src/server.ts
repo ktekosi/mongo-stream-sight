@@ -62,11 +62,11 @@ async function handlePost(req: Request, apiFunctions: ApiFunction[]): Promise<Re
 
         const resultValidation = targetFunction.return.safeParse(result);
         if (!resultValidation.success) {
-            return new Response('Internal error: Invalid function return', { status: 500 });
+            return new Response(JSON.stringify({error: {message: 'Internal error: Invalid function return'}}), { status: 500 });
         }
 
-        return new Response(JSON.stringify(result), { status: 200 });
+        return new Response(JSON.stringify({result}), { status: 200 });
     } catch (e) {
-        return new Response('Internal error', { status: 500 });
+        return new Response(JSON.stringify({error: {message: 'Internal error'}}), { status: 500 });
     }
 }
