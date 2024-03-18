@@ -1,4 +1,4 @@
-import { type Document } from 'mongodb';
+import { type Document, ObjectId } from 'mongodb';
 import { getValueByPath } from './utils';
 
 // Comparison Operators
@@ -7,6 +7,9 @@ function handleComparison(docValue: any, queryValue: any, operator: string): boo
         case '$eq':
             if (docValue instanceof Date && queryValue instanceof Date) {
                 return docValue.getTime() === queryValue.getTime();
+            }
+            if (docValue instanceof ObjectId && queryValue instanceof ObjectId) {
+                return docValue.equals(queryValue);
             }
             return docValue === queryValue;
         case '$gt':
@@ -21,12 +24,18 @@ function handleComparison(docValue: any, queryValue: any, operator: string): boo
             if (docValue instanceof Date && queryValue instanceof Date) {
                 return docValue.getTime() !== queryValue.getTime();
             }
+            if (docValue instanceof ObjectId && queryValue instanceof ObjectId) {
+                return !docValue.equals(queryValue);
+            }
             return docValue !== queryValue;
         case '$in':
             if (Array.isArray(queryValue)) {
                 return queryValue.some(item => {
                     if (docValue instanceof Date && item instanceof Date) {
                         return docValue.getTime() === item.getTime();
+                    }
+                    if (docValue instanceof ObjectId && item instanceof ObjectId) {
+                        return docValue.equals(item);
                     }
                     return docValue === item;
                 });
@@ -37,6 +46,9 @@ function handleComparison(docValue: any, queryValue: any, operator: string): boo
                 return !queryValue.some(item => {
                     if (docValue instanceof Date && item instanceof Date) {
                         return docValue.getTime() === item.getTime();
+                    }
+                    if (docValue instanceof ObjectId && item instanceof ObjectId) {
+                        return docValue.equals(item);
                     }
                     return docValue === item;
                 });
@@ -370,6 +382,8 @@ export function documentMatchesQuery(doc: Document, query: Document): boolean {
 
         if (queryValue instanceof RegExp) {
             if (!queryValue.test(docValue)) return false;
+        } else if (queryValue instanceof ObjectId) {
+            if (!queryValue.equals(docValue)) return false;
         } else if (['$and', '$or', '$nor'].includes(field)) {
             if (!handleLogical(doc, queryValue, field)) return false;
         } else if (field === '$expr') {

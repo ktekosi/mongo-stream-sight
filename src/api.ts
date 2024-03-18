@@ -4,6 +4,15 @@ import { type Document, MongoClient } from 'mongodb';
 import { CacheManager, type CacheOptions, type LiveCache } from './cache.ts';
 import { denormalize, normalize } from './converter.ts';
 
+const CountParamsSchema = z.object({
+    db: z.string(),
+    collection: z.string(),
+    query: z.record(z.unknown()).optional(),
+    skip: z.number().optional(),
+    limit: z.number().optional(),
+    ttl: z.number().optional()
+});
+
 const FindParamsSchema = z.object({
     db: z.string(),
     collection: z.string(),
@@ -16,6 +25,7 @@ const FindParamsSchema = z.object({
 });
 
 export type FindParams = z.infer<typeof FindParamsSchema>;
+export type CountParams = z.infer<typeof CountParamsSchema>;
 
 let mongo: MongoClient;
 let cacheManager: CacheManager;
@@ -64,7 +74,26 @@ export async function createApi(mongoUri: string): Promise<ApiFunction[]> {
         }
     };
 
-    return [FindFunction];
+    const CountFunction: ApiFunction = {
+        name: 'count',
+        params: CountParamsSchema,
+        return: z.number(),
+        func: async({ db, collection, query, skip, limit, ttl }: CountParams): Promise<number> => {
+            const cacheOptions: CacheOptions = {
+                query: denormalize(query ?? {}),
+                ttl: ttl ?? -1
+            };
+            const liveCache: LiveCache = cacheManager.getCache(mongo, db, collection, cacheOptions);
+
+            if (!liveCache.isReady()) {
+                await liveCache.waitToBeReady();
+            }
+
+            return liveCache.getData(skip, limit).length;
+        }
+    };
+
+    return [FindFunction, CountFunction];
 }
 
 export async function stopApi(): Promise<void> {
