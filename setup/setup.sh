@@ -11,9 +11,9 @@ docker run --rm -v "$project_name"_mongodb_keyfile:/etc/mongo/key mongo:6 bash -
 
 # Start the mongo containers
 docker-compose up -d
-
-echo "Waiting 5s for cluster to come up..."
-sleep 5
+SLEEP=10
+echo "Waiting ${SLEEP}s for cluster to come up..."
+sleep $SLEEP
 
 echo "Done. Trying to init replica set"
 

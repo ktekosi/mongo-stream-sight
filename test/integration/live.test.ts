@@ -552,7 +552,7 @@ describe('Server Integration Tests', () => {
     ];
 
     integrationTests.forEach((integrationTest) => {
-        test(integrationTest.name, async() => {
+        test('find: ' + integrationTest.name, async() => {
             const collection = client.db(DB_NAME).collection('users');
             await collection.insertMany(integrationTest.documentsToInsert, { writeConcern });
 
@@ -590,6 +590,46 @@ describe('Server Integration Tests', () => {
 
             // Check the update has been reflected in the cache
             expect(denormalize(updatedResponse.data.result ?? undefined)).toEqual(expectedDocuments);
+        });
+
+        test('count: ' + integrationTest.name, async() => {
+            const collection = client.db(DB_NAME).collection('users');
+            await collection.insertMany(integrationTest.documentsToInsert, { writeConcern });
+
+            const request = {
+                method: 'count',
+                params: integrationTest.findParams
+            };
+
+            // retry find several times until the documents have reached the cache
+            await retryOperation(async() => await axios.post(serverUrl, request),
+                response => {
+                    const result = response.data.result ?? undefined;
+                    return result === integrationTest.initialDocuments.length;
+                },
+                RETRY_COUNT, SLEEP_WAIT_TIME);
+
+            const response = await axios.post(serverUrl, request);
+
+            // Check response is correct
+            expect((response.data.result ?? undefined)).toEqual(integrationTest.initialDocuments.length);
+
+            await integrationTest.modifyAction(collection);
+
+            const expectedDocuments = integrationTest.expectedDocuments;
+
+            // retry find several times until the updates have reached the cache
+            await retryOperation(async() => await axios.post(serverUrl, request),
+                response => {
+                    const result = response.data.result ?? undefined;
+                    return (result) === (expectedDocuments.length);
+                },
+                RETRY_COUNT, SLEEP_WAIT_TIME);
+
+            const updatedResponse = await axios.post(serverUrl, request);
+
+            // Check the update has been reflected in the cache
+            expect(updatedResponse.data.result ?? undefined).toEqual(expectedDocuments.length);
         });
     });
 });

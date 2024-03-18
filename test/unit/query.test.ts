@@ -9,9 +9,23 @@ describe('documentMatchesQuery', () => {
         expect(documentMatchesQuery(doc, query)).toBe(true);
     });
 
+    test('should match simple equality on _id type', () => {
+        const _id = new ObjectId();
+        const doc = { _id, name: 'John' };
+        const query = { _id };
+        expect(documentMatchesQuery(doc, query)).toBe(true);
+    });
+
     test('should not match incorrect values', () => {
         const doc = { name: 'John' };
         const query = { name: 'Doe' };
+        expect(documentMatchesQuery(doc, query)).toBe(false);
+    });
+
+    test('should not match incorrect values on _id type', () => {
+        const _id = new ObjectId();
+        const doc = { _id, name: 'John' };
+        const query = { _id: new ObjectId(), name: 'Doe' };
         expect(documentMatchesQuery(doc, query)).toBe(false);
     });
 
@@ -23,9 +37,24 @@ describe('documentMatchesQuery', () => {
             expect(match).toBe(true);
         });
 
+        test('should match using $eq operator on _id type', () => {
+            const _id = new ObjectId();
+            const doc = { _id, age: 25 };
+            const query = { _id };
+            const match = documentMatchesQuery(doc, query);
+            expect(match).toBe(true);
+        });
+
         test('$ne operator', () => {
             const doc = { age: 25 };
             const query = { age: { $ne: 30 } };
+            expect(documentMatchesQuery(doc, query)).toBe(true);
+        });
+
+        test('$ne operator on _id type', () => {
+            const _id = new ObjectId();
+            const doc = { _id, age: 25 };
+            const query = { _id: { $ne: new ObjectId() } };
             expect(documentMatchesQuery(doc, query)).toBe(true);
         });
 
@@ -35,15 +64,39 @@ describe('documentMatchesQuery', () => {
             expect(documentMatchesQuery(doc, query)).toBe(true);
         });
 
+        test('$gt operator on _id type', () => {
+            const now = new Date();
+            const _id = new ObjectId(Math.floor(now.getTime() / 1000));
+            const doc = { _id, age: 30 };
+            const query = { _id: { $gt: new ObjectId(Math.floor(now.getTime() / 1000 - 1000)) } };
+            expect(documentMatchesQuery(doc, query)).toBe(true);
+        });
+
         test('$gte operator', () => {
             const doc = { age: 30 };
             const query = { age: { $gte: 30 } };
             expect(documentMatchesQuery(doc, query)).toBe(true);
         });
 
+        test('$gte operator on _id type', () => {
+            const now = new Date();
+            const _id = new ObjectId(Math.floor(now.getTime() / 1000));
+            const doc = { _id, age: 30 };
+            const query = { _id: { $gte: _id } };
+            expect(documentMatchesQuery(doc, query)).toBe(true);
+        });
+
         test('$lt operator', () => {
             const doc = { age: 20 };
             const query = { age: { $lt: 25 } };
+            expect(documentMatchesQuery(doc, query)).toBe(true);
+        });
+
+        test('$lt operator on _id type', () => {
+            const now = new Date();
+            const _id = new ObjectId(Math.floor(now.getTime() / 1000));
+            const doc = { _id, age: 20 };
+            const query = { _id: { $lt: new ObjectId(Math.floor(now.getTime() / 1000 + 1000)) } };
             expect(documentMatchesQuery(doc, query)).toBe(true);
         });
 
@@ -59,9 +112,23 @@ describe('documentMatchesQuery', () => {
             expect(documentMatchesQuery(doc, query)).toBe(true);
         });
 
+        test('$in operator with _id', () => {
+            const _id = new ObjectId();
+            const doc = { _id, age: 30 };
+            const query = { _id: { $in: [_id, new ObjectId()] } };
+            expect(documentMatchesQuery(doc, query)).toBe(true);
+        });
+
         test('$nin operator', () => {
             const doc = { age: 40 };
             const query = { age: { $nin: [25, 30, 35] } };
+            expect(documentMatchesQuery(doc, query)).toBe(true);
+        });
+
+        test('$nin operator with _id type', () => {
+            const _id = new ObjectId();
+            const doc = { _id, age: 40 };
+            const query = { age: { $nin: [new ObjectId(), new ObjectId()] } };
             expect(documentMatchesQuery(doc, query)).toBe(true);
         });
 
