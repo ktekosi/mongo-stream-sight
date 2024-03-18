@@ -2,6 +2,7 @@ import { type ApiFunction } from './server.ts';
 import { z } from 'zod';
 import { type Document, MongoClient } from 'mongodb';
 import { CacheManager, type CacheOptions, type LiveCache } from './cache.ts';
+import { denormalize, normalize } from './converter.ts';
 
 const FindParamsSchema = z.object({
     db: z.string(),
@@ -46,7 +47,7 @@ export async function createApi(mongoUri: string): Promise<ApiFunction[]> {
         return: z.array(z.any()),
         func: async({ db, collection, query, projection, skip, limit, sort, ttl }: FindParams): Promise<Document[]> => {
             const cacheOptions: CacheOptions = {
-                query,
+                query: denormalize(query ?? {}),
                 projection,
                 sort,
                 ttl: ttl ?? -1
@@ -57,7 +58,9 @@ export async function createApi(mongoUri: string): Promise<ApiFunction[]> {
                 await liveCache.waitToBeReady();
             }
 
-            return liveCache.getData(skip, limit);
+            const result = liveCache.getData(skip, limit);
+
+            return result.map(normalize);
         }
     };
 
