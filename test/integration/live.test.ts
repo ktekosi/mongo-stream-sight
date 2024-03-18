@@ -2,8 +2,8 @@ import { type Collection, type Document, MongoClient, ObjectId, type WriteConcer
 import axios from 'axios';
 import { afterAll, beforeAll, describe, test, expect, afterEach, beforeEach } from 'bun:test';
 import { type MongoStreamSightServer, startApp } from '../../src/app.ts';
-import { sleep, type Subprocess } from 'bun';
-import waitPort from 'wait-port';
+import { sleep } from 'bun';
+import { denormalize, normalize } from '../../src/converter.ts';
 
 type OperationFunction<T> = () => Promise<T>;
 type OperationChecker<T> = (value: T) => boolean;
@@ -88,11 +88,6 @@ describe('Server Integration Tests', () => {
         limit?: number
         sort?: Document
         ttl?: number
-    }
-
-    interface FindRequest {
-        method: 'find'
-        params: FindParams
     }
 
     interface IntegrationTestCase {
@@ -187,15 +182,15 @@ describe('Server Integration Tests', () => {
                     limit: 2
                 },
                 initialDocuments: [
-                    JSON.parse(JSON.stringify(users[1])),
-                    JSON.parse(JSON.stringify(users[2]))
+                    users[1],
+                    users[2]
                 ],
                 modifyAction: async(collection: Collection) => {
                     await collection.updateOne({ _id: updatedUser._id }, { $set: { age: updatedUser.age } }, { writeConcern });
                 },
                 expectedDocuments: [
-                    JSON.parse(JSON.stringify(updatedUser)),
-                    JSON.parse(JSON.stringify(users[2]))
+                    updatedUser,
+                    users[2]
                 ]
 
             };
@@ -392,7 +387,6 @@ describe('Server Integration Tests', () => {
             const user4 = { _id: new ObjectId(), name: 'User4', age: 35 }; // Additional user for skip and limit testing
             const users = [user1, user2, user3, user4];
             const updatedUser2 = { ...user2, age: 21 };
-            const projection = { name: 1, age: 1 };
             const sort = { age: -1 };
             return {
                 name: 'Update Document to Match Filter Criteria and Appear in Cache with Skip, Limit, and Sorting',
@@ -536,8 +530,25 @@ describe('Server Integration Tests', () => {
                 },
                 expectedDocuments: [user2]
             };
+        })(),
+        ((): IntegrationTestCase => {
+            const john: User = { _id: new ObjectId(), name: 'John', age: 10 };
+            const jane: User = { _id: new ObjectId(), name: 'Jane', age: 15 };
+            const query = { _id: john._id };
+            return {
+                name: 'Can filter on _id',
+                documentsToInsert: [john, jane],
+                findParams: {
+                    ...defaultFindParams,
+                    query: normalize(query)
+                },
+                initialDocuments: [john],
+                modifyAction: async(collection: Collection) => {
+                    await collection.updateOne(query, { $set: { age: 5 } }, { writeConcern });
+                },
+                expectedDocuments: [Object.assign({}, john, { age: 5 })]
+            };
         })()
-
     ];
 
     integrationTests.forEach((integrationTest) => {
@@ -552,13 +563,16 @@ describe('Server Integration Tests', () => {
 
             // retry find several times until the documents have reached the cache
             await retryOperation(async() => await axios.post(serverUrl, request),
-                response => JSON.stringify(response.data.result ?? undefined) === JSON.stringify(integrationTest.initialDocuments),
+                response => {
+                    const result = response.data.result ?? undefined;
+                    return JSON.stringify(result) === JSON.stringify(normalize(integrationTest.initialDocuments));
+                },
                 RETRY_COUNT, SLEEP_WAIT_TIME);
 
             const response = await axios.post(serverUrl, request);
 
             // Check response is correct
-            expect(response.data.result ?? undefined).toEqual(JSON.parse(JSON.stringify(integrationTest.initialDocuments)));
+            expect(denormalize(response.data.result ?? undefined)).toEqual(integrationTest.initialDocuments);
 
             await integrationTest.modifyAction(collection);
 
@@ -566,13 +580,16 @@ describe('Server Integration Tests', () => {
 
             // retry find several times until the updates have reached the cache
             await retryOperation(async() => await axios.post(serverUrl, request),
-                response => JSON.stringify(response.data.result ?? undefined) === JSON.stringify(expectedDocuments),
+                response => {
+                    const result = response.data.result ?? undefined;
+                    return JSON.stringify(result) === JSON.stringify(normalize(expectedDocuments));
+                },
                 RETRY_COUNT, SLEEP_WAIT_TIME);
 
             const updatedResponse = await axios.post(serverUrl, request);
 
             // Check the update has been reflected in the cache
-            expect(updatedResponse.data.result ?? undefined).toEqual(JSON.parse(JSON.stringify(expectedDocuments)));
+            expect(denormalize(updatedResponse.data.result ?? undefined)).toEqual(expectedDocuments);
         });
     });
 });
