@@ -320,6 +320,7 @@ export class LiveCache {
         const changeStream = this.collection.watch();
 
         changeStream.on('change', (changeEvent: Document) => {
+            this.eventsHistory.push(new Date());
             if (this.ready) {
                 this.onChangeEvent(changeEvent);
             } else {
