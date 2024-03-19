@@ -8,7 +8,7 @@ export interface MongoStreamSightServer {
 export async function startApp(port: number, mongo: string): Promise<MongoStreamSightServer> {
     const status = (): any => {
         return {
-            caches: Object.keys(getCaches()),
+            caches: Object.fromEntries(Object.entries(getCaches()).map(([hash, cache]) => [hash, cache.getStatus()])),
             memory: process.memoryUsage()
         };
     };

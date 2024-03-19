@@ -201,6 +201,16 @@ export function deleteDocument(deleteEvent: DeleteEvent, cache: Document[], inde
     delete index[id];
 }
 
+interface CacheStatus {
+    database: string
+    collection: string
+    ready: boolean
+    lastAccessed: Date
+    count: number
+    changeEventsPerSecond: number
+    avgChangeEventsPerMinute: number
+}
+
 type Resolver<T> = (value?: T | PromiseLike<T>) => void;
 type Rejecter = (reason?: any) => void;
 
@@ -214,6 +224,8 @@ export class LiveCache {
     private closing: boolean = false;
     private collection: Collection;
     private lastAccessed: Date;
+    private eventsHistory: Date[] = [];
+    private readonly cleanupInterval: NodeJS.Timeout;
 
     constructor(private readonly mongo: MongoClient, private readonly dbName: string, private readonly collectionName: string, private readonly options?: CacheOptions) {
         this.collection = mongo.db(dbName).collection(collectionName);
@@ -225,6 +237,31 @@ export class LiveCache {
         });
 
         this.lastAccessed = new Date();
+
+        this.cleanupInterval = setInterval(() => {
+            this.cleanupEvents();
+        }, 60000);
+    }
+
+    public getStatus(): CacheStatus {
+        const now = new Date();
+        const changeEventsPerSecond = this.eventsHistory.filter(d => d.getTime() > now.getTime() - 1000).length;
+        const avgChangeEventsPerMinute = this.eventsHistory.filter(d => d.getTime() > now.getTime() - 60000).length;
+
+        return {
+            database: this.dbName,
+            collection: this.collectionName,
+            ready: this.ready,
+            lastAccessed: this.lastAccessed,
+            count: this.cache.length,
+            changeEventsPerSecond,
+            avgChangeEventsPerMinute
+        };
+    }
+
+    public cleanupEvents(): void {
+        const now = new Date();
+        this.eventsHistory = this.eventsHistory.filter(d => d.getTime() > now.getTime() - 120000);
     }
 
     public getLastAccessed(): Date {
