@@ -49,6 +49,14 @@ function isDeleteEvent(event: Document): event is DeleteEvent {
     return event.operationType === 'delete';
 }
 
+interface InvalidateEvent {
+    operationType: 'invalidate'
+}
+
+function isInvalidateEvent(event: Document): event is InvalidateEvent {
+    return event.operationType === 'invalidate';
+}
+
 interface DropEvent {
     operationType: 'drop'
     ns: {
@@ -220,17 +228,31 @@ export class LiveCache {
     private ready: boolean = false;
     private readonly changeEventsBuffer: Document[] = [];
     private readonly readyPromise: Promise<void>;
-    private changeStream: ChangeStream;
     private closing: boolean = false;
-    private collection: Collection;
+    private readonly collection: Collection;
     private lastAccessed: Date;
     private eventsHistory: Date[] = [];
     private readonly cleanupInterval: NodeJS.Timeout;
+    private readonly changeEventHandler: OnChangeEventHandler;
 
-    constructor(private readonly mongo: MongoClient, private readonly dbName: string, private readonly collectionName: string, private readonly options?: CacheOptions) {
+    constructor(
+        private readonly mongo: MongoClient,
+        private readonly dbName: string,
+        private readonly collectionName: string,
+        private readonly changeStreamManager: ChangeStreamManager,
+        private readonly options?: CacheOptions) {
         this.collection = mongo.db(dbName).collection(collectionName);
 
-        this.changeStream = this.watch();
+        this.changeEventHandler = (changeEvent: Document) => {
+            this.eventsHistory.push(new Date());
+            if (this.ready) {
+                this.onChangeEvent(changeEvent);
+            } else {
+                this.changeEventsBuffer.push(changeEvent);
+            }
+        };
+
+        this.watch();
 
         this.readyPromise = new Promise((resolve, reject) => {
             void this.runQuery(resolve, reject);
@@ -286,7 +308,8 @@ export class LiveCache {
 
     public async stop(): Promise<void> {
         this.closing = true;
-        await this.changeStream.close();
+        await this.changeStreamManager.unregister(this.mongo, this.dbName, this.collectionName, this.changeEventHandler);
+        clearInterval(this.cleanupInterval);
     }
 
     private async runQuery(resolve: Resolver<void>, reject: Rejecter): Promise<void> {
@@ -311,30 +334,8 @@ export class LiveCache {
         resolve();
     }
 
-    public rewatch(): void {
-        this.collection = this.mongo.db(this.dbName).collection(this.collectionName);
-        this.changeStream = this.watch();
-    }
-
-    private watch(): ChangeStream {
-        const changeStream = this.collection.watch();
-
-        changeStream.on('change', (changeEvent: Document) => {
-            this.eventsHistory.push(new Date());
-            if (this.ready) {
-                this.onChangeEvent(changeEvent);
-            } else {
-                this.changeEventsBuffer.push(changeEvent);
-            }
-        });
-
-        changeStream.on('close', () => {
-            if (!this.closing) {
-                this.rewatch();
-            }
-        });
-
-        return changeStream;
+    private watch(): void {
+        this.changeStreamManager.register(this.mongo, this.dbName, this.collectionName, this.changeEventHandler);
     }
 
     private insertDocument(insertEvent: InsertEvent): void {
@@ -407,13 +408,77 @@ export function createQueryHash(db: string, collection: string, query: Document,
     return createMD5Hash(JSON.stringify({ db, collection, query, projection, sort }));
 }
 
+type OnChangeEventHandler = (changeEvent: Document) => void;
+
+export class ChangeStreamManager {
+    private readonly changeStreams: Record<string, ChangeStream> = {};
+    private readonly registeredHandlers: Record<string, Set<OnChangeEventHandler>> = {};
+
+    createChangeStream(mongo: MongoClient, dbName: string, collectionName: string): void {
+        const key = `${dbName}.${collectionName}`;
+        if (this.changeStreams[key] === undefined) {
+            this.changeStreams[key] = mongo.db(dbName).collection(collectionName).watch();
+            this.registerOnChangeHandler(mongo, dbName, collectionName);
+        }
+    }
+
+    private reWatch(mongo: MongoClient, dbName: string, collectionName: string): void {
+        const key = `${dbName}.${collectionName}`;
+        if (Object.keys(this.registeredHandlers).length === 0) {
+            delete this.changeStreams[key];
+            return;
+        }
+        this.changeStreams[key] = mongo.db(dbName).collection(collectionName).watch();
+        this.registerOnChangeHandler(mongo, dbName, collectionName);
+    }
+
+    private registerOnChangeHandler(mongo: MongoClient, dbName: string, collectionName: string): void {
+        const key = `${dbName}.${collectionName}`;
+        this.changeStreams[key].on('change', (changeEvent: Document) => {
+            if (isInvalidateEvent(changeEvent)) {
+                this.reWatch(mongo, dbName, collectionName);
+                return;
+            }
+
+            for (const handler of this.registeredHandlers[key].values()) {
+                handler(changeEvent);
+            }
+        });
+    }
+
+    register(mongo: MongoClient, dbName: string, collectionName: string, onChangeEventHandler: OnChangeEventHandler): void {
+        this.createChangeStream(mongo, dbName, collectionName);
+        const key = `${dbName}.${collectionName}`;
+        if (this.registeredHandlers[key] === undefined) {
+            this.registeredHandlers[key] = new Set();
+        }
+        this.registeredHandlers[key].add(onChangeEventHandler);
+    }
+
+    async unregister(mongo: MongoClient, dbName: string, collectionName: string, onChangeEventHandler: OnChangeEventHandler): Promise<void> {
+        const key = `${dbName}.${collectionName}`;
+        this.registeredHandlers[key].delete(onChangeEventHandler);
+
+        if (this.registeredHandlers[key].size === 0) {
+            await this.changeStreams[key].close();
+        }
+    }
+
+    async stop(): Promise<void> {
+        await Promise.all(Object.values(this.changeStreams).map(async(changeStream) => { await changeStream.close(); }));
+    }
+}
+
 export class CacheManager {
     private readonly caches: Record<string, LiveCache> = {};
+
+    constructor(private readonly changeStreamManager: ChangeStreamManager) {
+    }
 
     getCache(mongo: MongoClient, dbName: string, collectionName: string, cacheOptions: CacheOptions): LiveCache {
         const queryHash = createQueryHash(dbName, collectionName, cacheOptions.query ?? {}, cacheOptions.projection ?? {}, cacheOptions.sort ?? {});
         if (this.caches[queryHash] === undefined) {
-            this.caches[queryHash] = new LiveCache(mongo, dbName, collectionName, cacheOptions);
+            this.caches[queryHash] = new LiveCache(mongo, dbName, collectionName, this.changeStreamManager, cacheOptions);
         }
 
         return this.caches[queryHash];
