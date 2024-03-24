@@ -1,7 +1,7 @@
 import { type ApiFunction } from './server.ts';
 import { z } from 'zod';
 import { type Document, MongoClient } from 'mongodb';
-import { CacheManager, type CacheOptions, type LiveCache } from './cache.ts';
+import { CacheManager, type CacheOptions, ChangeStreamManager, type LiveCache } from './cache.ts';
 import { denormalize, normalize } from './converter.ts';
 
 const CountParamsSchema = z.object({
@@ -29,6 +29,7 @@ export type CountParams = z.infer<typeof CountParamsSchema>;
 
 let mongo: MongoClient;
 let cacheManager: CacheManager;
+let changeStreamManager: ChangeStreamManager;
 
 export async function createApi(mongoUri: string): Promise<ApiFunction[]> {
     mongo = new MongoClient(mongoUri, {
@@ -49,7 +50,8 @@ export async function createApi(mongoUri: string): Promise<ApiFunction[]> {
         process.exit(1);
     }
 
-    cacheManager = new CacheManager();
+    changeStreamManager = new ChangeStreamManager();
+    cacheManager = new CacheManager(changeStreamManager);
 
     const FindFunction: ApiFunction = {
         name: 'find',
