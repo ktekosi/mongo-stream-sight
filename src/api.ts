@@ -1,7 +1,7 @@
 import { type ApiFunction } from './server.ts';
 import { z } from 'zod';
 import { type Document, MongoClient } from 'mongodb';
-import { CacheManager, type CacheOptions, ChangeStreamManager, type LiveCache } from './cache.ts';
+import {CacheManager, type CacheOptions, ChangeStreamManager, ChangeStreamsStats, type LiveCache} from './cache.ts';
 import { denormalize, normalize } from './converter.ts';
 
 const CountParamsSchema = z.object({
@@ -105,4 +105,8 @@ export async function stopApi(): Promise<void> {
 
 export function getCaches(): Record<string, LiveCache> {
     return cacheManager.getAllCaches();
+}
+
+export function getStreamsStats(): ChangeStreamsStats {
+    return changeStreamManager.getStats();
 }

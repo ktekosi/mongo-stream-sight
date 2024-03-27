@@ -1,5 +1,5 @@
 import { startServer } from './server.ts';
-import { createApi, stopApi, getCaches } from './api.ts';
+import { createApi, stopApi, getCaches, getStreamsStats } from './api.ts';
 
 export interface MongoStreamSightServer {
     shutdown: () => void
@@ -8,6 +8,7 @@ export interface MongoStreamSightServer {
 export async function startApp(port: number, mongo: string): Promise<MongoStreamSightServer> {
     const status = (): any => {
         return {
+            streams: getStreamsStats(),
             caches: Object.fromEntries(Object.entries(getCaches()).map(([hash, cache]) => [hash, cache.getStatus()])),
             memory: process.memoryUsage()
         };
