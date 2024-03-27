@@ -215,8 +215,6 @@ interface CacheStatus {
     ready: boolean
     lastAccessed: Date
     count: number
-    changeEventsPerSecond: number
-    avgChangeEventsPerMinute: number
 }
 
 type Resolver<T> = (value?: T | PromiseLike<T>) => void;
@@ -228,11 +226,8 @@ export class LiveCache {
     private ready: boolean = false;
     private readonly changeEventsBuffer: Document[] = [];
     private readonly readyPromise: Promise<void>;
-    private closing: boolean = false;
     private readonly collection: Collection;
     private lastAccessed: Date;
-    private eventsHistory: Date[] = [];
-    private readonly cleanupInterval: NodeJS.Timeout;
     private readonly changeEventHandler: OnChangeEventHandler;
 
     constructor(
@@ -244,7 +239,6 @@ export class LiveCache {
         this.collection = mongo.db(dbName).collection(collectionName);
 
         this.changeEventHandler = (changeEvent: Document) => {
-            this.eventsHistory.push(new Date());
             if (this.ready) {
                 this.onChangeEvent(changeEvent);
             } else {
@@ -259,31 +253,16 @@ export class LiveCache {
         });
 
         this.lastAccessed = new Date();
-
-        this.cleanupInterval = setInterval(() => {
-            this.cleanupEvents();
-        }, 60000);
     }
 
     public getStatus(): CacheStatus {
-        const now = new Date();
-        const changeEventsPerSecond = this.eventsHistory.filter(d => d.getTime() > now.getTime() - 1000).length;
-        const avgChangeEventsPerMinute = this.eventsHistory.filter(d => d.getTime() > now.getTime() - 60000).length;
-
         return {
             database: this.dbName,
             collection: this.collectionName,
             ready: this.ready,
             lastAccessed: this.lastAccessed,
-            count: this.cache.length,
-            changeEventsPerSecond,
-            avgChangeEventsPerMinute
+            count: this.cache.length
         };
-    }
-
-    public cleanupEvents(): void {
-        const now = new Date();
-        this.eventsHistory = this.eventsHistory.filter(d => d.getTime() > now.getTime() - 120000);
     }
 
     public getLastAccessed(): Date {
@@ -307,9 +286,7 @@ export class LiveCache {
     }
 
     public async stop(): Promise<void> {
-        this.closing = true;
         await this.changeStreamManager.unregister(this.mongo, this.dbName, this.collectionName, this.changeEventHandler);
-        clearInterval(this.cleanupInterval);
     }
 
     private async runQuery(resolve: Resolver<void>, reject: Rejecter): Promise<void> {
@@ -410,15 +387,38 @@ export function createQueryHash(db: string, collection: string, query: Document,
 
 type OnChangeEventHandler = (changeEvent: Document) => void;
 
+export type ChangeStreamsStats = Record<string, {
+    changeEventsPerSecond: number
+    avgChangeEventsPerMinute: number
+}>;
+
 export class ChangeStreamManager {
     private readonly changeStreams: Record<string, ChangeStream> = {};
     private readonly registeredHandlers: Record<string, Set<OnChangeEventHandler>> = {};
+    private readonly eventsHistory: Record<string, Date[]> = {};
+    private cleanupInterval?: NodeJS.Timeout;
+    private cleanupTimerActive: boolean = false;
+
+    private cleanupEvents(): void {
+        const now = new Date();
+        for (const key of Object.keys(this.eventsHistory)) {
+            this.eventsHistory[key] = this.eventsHistory[key].filter(d => d.getTime() > now.getTime() - 120000);
+        }
+    }
 
     createChangeStream(mongo: MongoClient, dbName: string, collectionName: string): void {
         const key = `${dbName}.${collectionName}`;
         if (this.changeStreams[key] === undefined) {
             this.changeStreams[key] = mongo.db(dbName).collection(collectionName).watch();
+            this.eventsHistory[key] = [];
             this.registerOnChangeHandler(mongo, dbName, collectionName);
+
+            if (!this.cleanupTimerActive) {
+                this.cleanupTimerActive = true;
+                this.cleanupInterval = setInterval(() => {
+                    this.cleanupEvents();
+                }, 60000);
+            }
         }
     }
 
@@ -440,10 +440,21 @@ export class ChangeStreamManager {
                 return;
             }
 
+            this.eventsHistory[key].push(new Date());
+
             for (const handler of this.registeredHandlers[key].values()) {
                 handler(changeEvent);
             }
         });
+    }
+
+    public getStats(): ChangeStreamsStats {
+        return Object.fromEntries(Object.entries(this.eventsHistory).map(([collection, eventsHistory]) => {
+            return [collection, {
+                changeEventsPerSecond: eventsHistory.filter(d => d.getTime() > new Date().getTime() - 1000).length,
+                avgChangeEventsPerMinute: eventsHistory.filter(d => d.getTime() > new Date().getTime() - 60000).length
+            }];
+        }));
     }
 
     register(mongo: MongoClient, dbName: string, collectionName: string, onChangeEventHandler: OnChangeEventHandler): void {
@@ -460,12 +471,20 @@ export class ChangeStreamManager {
         this.registeredHandlers[key].delete(onChangeEventHandler);
 
         if (this.registeredHandlers[key].size === 0) {
+            delete this.registeredHandlers[key];
             await this.changeStreams[key].close();
+            delete this.changeStreams[key];
+        }
+
+        if (Object.keys(this.changeStreams).length === 0) {
+            clearInterval(this.cleanupInterval);
+            this.cleanupTimerActive = false;
         }
     }
 
     async stop(): Promise<void> {
         await Promise.all(Object.values(this.changeStreams).map(async(changeStream) => { await changeStream.close(); }));
+        clearInterval(this.cleanupInterval);
     }
 }
 
